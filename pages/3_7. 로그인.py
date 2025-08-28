@@ -9,6 +9,42 @@ from datetime import datetime, timedelta
 # -----------------------------
 st.set_page_config(page_title="Streamlit 로그인", page_icon="🔐", layout="centered")
 
+# ======== Sidebar (minimal customize as requested) ========
+def custom_sidebar():
+    st.markdown("""
+    <style>
+      [data-testid="stSidebarNav"] { display: none !important; }
+      section[data-testid="stSidebar"] {
+        background: #3E4A61 !important;
+        color: #fff !important;
+      }
+      section[data-testid="stSidebar"] * { color:#fff !important; }
+      .sb-title {
+        font-weight: 800;
+        font-size: 20px;
+        margin: 6px 0 8px 0;
+      }
+      .sb-link [data-testid="stPageLink"] a{
+        color:#fff !important;
+        text-decoration:none !important;
+      }
+      .sb-link [data-testid="stPageLink"] a:hover{
+        background: rgba(255,255,255,0.12);
+        border-radius: 6px;
+      }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
+
+    st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
+    st.sidebar.page_link("pages/1_5. 친환경 지수.py", label="🌱 친환경 지수")
+    st.sidebar.page_link("pages/2_6. 안전 경보.py", label="⚠️ 안전/경보")
+    st.sidebar.page_link("pages/3_7. 로그인.py",     label="🔐 로그인")
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
+custom_sidebar()
+
 # -----------------------------
 # 세션 스토리지 (데모용)
 # -----------------------------
