@@ -1,0 +1,313 @@
+# pages/5_메인_컨트롤_LiveCam.py
+import math
+import json
+import streamlit as st
+import streamlit.components.v1 as components
+
+st.header("🕹️ 메인 컨트롤 & Live Cam (키보드 리모컨)")
+
+# ───────── 사이드바 공용 설정 ─────────
+API_BASE = st.sidebar.text_input("제어 API 주소", "http://127.0.0.1:8000")
+hz = st.sidebar.slider("전송 주기(Hz)", 5, 30, 10)
+timeout_s = st.sidebar.slider("요청 타임아웃(s)", 0.2, 3.0, 1.0, 0.1)
+send_zero_on_release = st.sidebar.checkbox("키에서 손 떼면 정지(0%) 전송", True)
+
+cam_mode = st.sidebar.selectbox("카메라 모드", ["데모(가상 영상)", "노트북 웹캠(브라우저)", "MJPEG 주소"])
+cam_url = st.sidebar.text_input("카메라 MJPEG URL", f"{API_BASE}/cam/mjpeg")
+
+# 속도(PWM) 슬라이더(메인 영역)
+pwm = st.slider("속도(PWM%)", 0, 100, 40, key="pwm_slider")
+
+# ───────── 공통 스타일(게임패드) 한 번만 주입 ─────────
+if "gp_css" not in st.session_state:
+    st.markdown("""
+    <style>
+      .gamepad-card{
+        border:1px solid #e7e7e7; border-radius:20px; padding:16px 18px; background:#fff;
+        box-shadow: 0 1px 10px rgba(0,0,0,0.04);
+      }
+      .gamepad-title{ font-weight:700; font-size:16px; margin-bottom:10px; }
+      .gamepad { display:flex; gap:18px; align-items:center; justify-content:center; }
+      .gp-btn{
+        width:92px; height:92px; border-radius:999px; display:flex; align-items:center; justify-content:center;
+        font-weight:800; font-size:34px; user-select:none; cursor:default;
+        background: radial-gradient(circle at 30% 30%, #f2f4f8, #e6e9ef); color:#3b3f49;
+        border:1px solid #d4d9e2; box-shadow: 0 6px 14px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.5);
+        transition: transform .06s ease, box-shadow .06s ease, background .06s ease;
+      }
+      .gp-btn.active{
+        background: radial-gradient(circle at 30% 30%, #c8f7d0, #8de4a1);
+        box-shadow: inset 0 4px 12px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.04);
+        transform: scale(0.96);
+        color:#0b5b2b; border-color:#7edaa1;
+      }
+      .tip{ color:#6b7280; font-size:13px; margin-top:10px; }
+    </style>
+    """, unsafe_allow_html=True)
+    st.session_state.gp_css = True
+
+# ───────── 가운데: 키보드 리모컨(게임패드) ─────────
+def render_big_controller(offset_px: int, api_base: str, pwm_val: int, hz_val: int,
+                          timeout_sec: float, send_zero: bool):
+    interval_ms = int(1000 / max(1, hz_val))
+    html = f"""
+    <style>
+      .ctr-wrap{{ margin-top:{offset_px}px; }}
+      .pad{{ position:relative; width:340px; height:300px; margin:auto; }}
+      .btn{{
+        position:absolute; width:110px; height:110px; border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        font-weight:900; font-size:34px; user-select:none; cursor:default;
+        background:radial-gradient(circle at 30% 30%, #f4f6fb, #e6e9f3); color:#1f2937;
+        border:1px solid #cfd6e3; box-shadow:0 12px 20px rgba(0,0,0,.08), inset 0 -2px 0 rgba(255,255,255,.5);
+        transition:transform .05s, box-shadow .05s, background .05s;
+      }}
+      .btn.active{{
+        background:radial-gradient(circle at 30% 30%, #c8f7d0, #86e3a1);
+        border-color:#7edaa1; transform:scale(.96); box-shadow:inset 0 4px 12px rgba(0,0,0,.18);
+      }}
+      .btn.stop{{ background:radial-gradient(circle at 30% 30%, #ffe2e2, #ffb3b3); border-color:#ff9aa2; font-size:22px; line-height:1.05; }}
+      .btn.stop.active{{ background:radial-gradient(circle at 30% 30%, #ffb9b9, #ff8b8b); }}
+      .btn.up{{ left:115px; top:0; }}
+      .btn.left{{ left:0; top:95px; }}
+      .btn.right{{ right:0; top:95px; }}
+      .btn.stop{{ left:115px; top:95px; }}
+      .pad-ring{{ position:absolute; inset:10px; border-radius:24px; border:2px dashed #e5e7eb; }}
+      .hint{{ text-align:center; margin-top:10px; color:#6b7280; font-size:13px; }}
+    </style>
+
+    <div id="kbbox" class="ctr-wrap" tabindex="0">
+      <div class="pad">
+        <div class="pad-ring"></div>
+        <div id="btnU" class="btn up">▲</div>
+        <div id="btnL" class="btn left">◀</div>
+        <div id="btnR" class="btn right">▶</div>
+        <div id="btnS" class="btn stop">⏹<br>STOP</div>
+      </div>
+      <div class="hint">이 영역을 클릭(포커스 ON) 후 <b>↑ / ← / →</b> 를 꾹 누르면 연속 전송 • <b>Space/Enter</b>=정지</div>
+    </div>
+
+    <script>
+      const API_BASE="{api_base}";
+      const PWM={int(pwm_val)};
+      const INTERVAL={interval_ms};
+      const TIMEOUT={int(timeout_sec*1000)};
+      const SEND_ZERO={json.dumps(send_zero)};
+
+      const box=document.getElementById('kbbox');
+      const bU=document.getElementById('btnU'), bL=document.getElementById('btnL'),
+            bR=document.getElementById('btnR'), bS=document.getElementById('btnS');
+
+      const st={{up:false,left:false,right:false}};
+      let timer=null;
+
+      const setA=(el,on)=>el.classList.toggle('active',!!on);
+      const paint=()=>{{ setA(bU,st.up); setA(bL,st.left); setA(bR,st.right); }};
+
+      function post(path, body){{
+        const ctrl=new AbortController(); const id=setTimeout(()=>ctrl.abort(), TIMEOUT);
+        fetch(API_BASE+path,{{method:'POST',headers:{{'Content-Type':'application/json'}},
+              body:JSON.stringify(body),signal:ctrl.signal}})
+          .catch(()=>{{}}).finally(()=>clearTimeout(id));
+      }}
+      function tick(){{
+        if (st.up)    post('/cmd/pwm',   {{duty:PWM}});
+        if (st.left)  post('/cmd/steer', {{dir:'left'}});
+        if (st.right) post('/cmd/steer', {{dir:'right'}});
+        if (!st.up && !st.left && !st.right){{ clearInterval(timer); timer=null; }}
+      }}
+      function start(){{ if (!timer) timer=setInterval(tick, INTERVAL); }}
+      function stopAll(){{
+        st.up=st.left=st.right=false; paint();
+        if (SEND_ZERO) post('/cmd/pwm', {{duty:0}});
+        if (timer){{ clearInterval(timer); timer=null; }}
+      }}
+
+      // mouse/touch
+      function bindHold(el, key, action){{
+        const down=(e)=>{{ e.preventDefault();
+          if (action==='stop'){{ stopAll(); el.classList.add('active'); setTimeout(()=>el.classList.remove('active'),120); return; }}
+          st[key]=true; paint(); tick(); start();
+        }};
+        const up=(e)=>{{ e.preventDefault();
+          if (action!=='stop'){{ st[key]=false; paint(); if (SEND_ZERO && key==='up') post('/cmd/pwm', {{duty:0}}); }}
+        }};
+        el.addEventListener('mousedown',down); el.addEventListener('mouseup',up); el.addEventListener('mouseleave',up);
+        el.addEventListener('touchstart',down,{{passive:false}}); el.addEventListener('touchend',up,{{passive:false}});
+      }}
+      bindHold(bU,'up'); bindHold(bL,'left'); bindHold(bR,'right'); bindHold(bS,null,'stop');
+
+      // keyboard
+      box.addEventListener('keydown',(e)=>{{
+        if (['ArrowUp','ArrowLeft','ArrowRight',' ','Enter'].includes(e.key)){{
+          e.preventDefault();
+          if (e.key==='ArrowUp') st.up=true;
+          if (e.key==='ArrowLeft') st.left=true;
+          if (e.key==='ArrowRight') st.right=true;
+          if (e.key===' ' || e.key==='Enter'){{ stopAll(); bS.classList.add('active'); setTimeout(()=>bS.classList.remove('active'),120); return; }}
+          paint(); tick(); start();
+        }}
+      }});
+      box.addEventListener('keyup',(e)=>{{
+        if (['ArrowUp','ArrowLeft','ArrowRight'].includes(e.key)){{
+          e.preventDefault();
+          if (e.key==='ArrowUp') st.up=false;
+          if (e.key==='ArrowLeft') st.left=false;
+          if (e.key==='ArrowRight') st.right=false;
+          paint(); if (SEND_ZERO && e.key==='ArrowUp') post('/cmd/pwm', {{duty:0}});
+        }}
+      }});
+
+      // safety
+      document.addEventListener('visibilitychange', ()=>{{ if (document.hidden) stopAll(); }});
+      box.addEventListener('blur', stopAll);
+      setTimeout(()=>box.focus(), 100);
+    </script>
+    """
+    components.html(html, height=offset_px + 360)
+
+
+# ───────── 왼쪽: Live Cam ─────────
+def render_live_cam(mode: str, mjpeg_url: str):
+    st.subheader("📷 Live Cam")
+    if mode == "데모(가상 영상)":
+        components.html("""
+        <style>
+          .camwrap { position:relative; width:100%; height:360px; border:1px solid #ddd; border-radius:12px; overflow:hidden; background:#111;}
+          .badge   { position:absolute; left:12px; top:12px; background:#fff3; color:#fff; padding:4px 10px; border-radius:999px; font-weight:700; letter-spacing:1px;}
+          canvas   { width:100%; height:100%; display:block; }
+        </style>
+        <div class="camwrap"><div class="badge">DEMO</div><canvas id="c"></canvas></div>
+        <script>
+          const can = document.getElementById('c'); const ctx = can.getContext('2d');
+          function resize(){ can.width=can.clientWidth; can.height=can.clientHeight; }
+          window.addEventListener('resize', resize); resize();
+          function draw(t){
+            const w=can.width,h=can.height;
+            const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,'#1b2735'); g.addColorStop(1,'#090a0f');
+            ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+            const r=40+10*Math.sin(t*0.002), cx=(w/2)+Math.sin(t*0.0015)*w*0.3, cy=h*0.35+Math.sin(t*0.001)*10;
+            ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle='#ffcc33'; ctx.fill();
+            ctx.beginPath();
+            for(let x=0;x<w;x++){ const y=h*0.6+Math.sin((x*0.02)+(t*0.006))*8+Math.sin((x*0.04)-(t*0.004))*5; if(x===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+            ctx.strokeStyle='#2ec4b6'; ctx.lineWidth=2; ctx.stroke();
+            ctx.fillStyle='#fff'; ctx.font='12px sans-serif'; ctx.fillText('SIMULATED FEED — '+new Date().toLocaleTimeString(),12,h-12);
+            requestAnimationFrame(draw);
+          } requestAnimationFrame(draw);
+        </script>
+        """, height=380)
+        st.caption("가상 화면입니다. 라즈베리 연결 시 모드를 ‘MJPEG 주소’로 바꾸고 주소만 입력하세요.")
+    elif mode == "노트북 웹캠(브라우저)":
+        components.html("""
+        <style>
+          .camwrap{position:relative;width:100%;height:360px;border:1px solid #ddd;border-radius:12px;overflow:hidden;background:#000;}
+          .camwrap video{width:100%;height:100%;object-fit:cover;display:block;}
+          .badge{position:absolute;left:12px;top:12px;background:#0008;color:#fff;padding:4px 10px;border-radius:999px;font-weight:700;letter-spacing:1px;}
+          .stat{margin-top:6px;font-size:12px;color:#666;}
+        </style>
+        <div class="camwrap"><div class="badge">LOCAL CAM</div><video id="v" autoplay playsinline muted></video></div>
+        <div class="stat">상태: <span id="st">권한 대기…</span></div>
+        <script>
+          const v=document.getElementById('v'); const st=document.getElementById('st'); let stream=null;
+          async function start(){ try{
+            stream = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:1280}, height:{ideal:720}, facingMode:'user'} });
+            v.srcObject=stream; st.textContent='🟢 카메라 연결됨';
+          }catch(e){ console.error(e); st.textContent='🔴 권한 거부/장치 없음/보안 정책'; } }
+          function stop(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; st.textContent='⏹️ 중지됨'; } }
+          document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stop(); });
+          window.addEventListener('beforeunload', stop); start();
+        </script>
+        """, height=420)
+        st.caption("처음 실행 시 브라우저 카메라 권한을 허용하세요.")
+    else:
+        components.html(f"""
+        <style>
+          .camwrap{{position:relative;width:100%;height:360px;border:1px solid #ddd;border-radius:12px;overflow:hidden;background:#000;}}
+          .camwrap img{{width:100%;height:100%;object-fit:cover;display:block;}}
+          .stat{{margin-top:6px;font-size:12px;color:#666;}}
+        </style>
+        <div class="camwrap"><img id="cam" src="{mjpeg_url}"></div>
+        <div class="stat">상태: <span id="st">연결 시도 중…</span></div>
+        <script>
+          const img=document.getElementById('cam'); const st=document.getElementById('st');
+          img.onload=()=>{{ st.textContent='🟢 연결됨'; }};
+          img.onerror=()=>{{ st.textContent='🔴 연결 실패 (주소/서버/CORS 확인)'; }};
+        </script>
+        """, height=420)
+        st.caption("예) http://라즈베리IP:8000/cam/mjpeg")
+
+# ───────── 오른쪽: 지도 & 경로(직선) ─────────
+def render_map(pwm_val: int):
+    try:
+        from streamlit_folium import st_folium
+        import folium
+    except Exception:
+        st.warning("지도 기능: pip install streamlit-folium folium 설치 필요")
+        return
+
+    def haversine_km(lat1, lon1, lat2, lon2):
+        R = 6371.0088
+        p1, p2 = math.radians(lat1), math.radians(lat2)
+        dp = math.radians(lat2 - lat1)
+        dl = math.radians(lon2 - lon1)
+        a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+        return 2*R*math.asin(math.sqrt(a))
+
+    if "pos" not in st.session_state:
+        st.session_state.pos = {"lat": 35.1796, "lng": 129.0756}
+    if "dst" not in st.session_state:
+        st.session_state.dst = {"lat": 35.1700, "lng": 129.1300}
+
+    st.subheader("🗺️ 지도 & 경로(직선 최단)")
+    c1, c2, c3 = st.columns(3)
+    pos_lat = c1.number_input("현재 위도", value=st.session_state.pos["lat"], format="%.6f")
+    pos_lng = c2.number_input("현재 경도", value=st.session_state.pos["lng"], format="%.6f")
+    speed_kn = c3.number_input("선속(노트)", value=max(0.0, round((pwm_val/100)*6.0, 1)), step=0.1)
+
+    d1, d2 = st.columns(2)
+    dst_lat = d1.number_input("목적지 위도", value=st.session_state.dst["lat"], format="%.6f")
+    dst_lng = d2.number_input("목적지 경도", value=st.session_state.dst["lng"], format="%.6f")
+
+    st.session_state.pos = {"lat": float(pos_lat), "lng": float(pos_lng)}
+    st.session_state.dst = {"lat": float(dst_lat), "lng": float(dst_lng)}
+
+    dist_km = haversine_km(pos_lat, pos_lng, dst_lat, dst_lng)
+    if speed_kn > 0:
+        eta_h = dist_km / (speed_kn * 1.852)
+        h, m = int(eta_h), int(round((eta_h - int(eta_h)) * 60))
+        eta_text = f"{h}h {m}m"
+    else:
+        eta_text = "—"
+
+    center = [(pos_lat + dst_lat)/2, (pos_lng + dst_lng)/2]
+    m = folium.Map(location=center, zoom_start=12, tiles="OpenStreetMap")
+    folium.Marker([pos_lat, pos_lng], tooltip="현재 위치",
+                  icon=folium.Icon(color="blue", icon="ship", prefix="fa")).add_to(m)
+    folium.Marker([dst_lat, dst_lng], tooltip="목적지",
+                  icon=folium.Icon(color="red", icon="flag", prefix="fa")).add_to(m)
+    folium.PolyLine([[pos_lat,pos_lng],[dst_lat,dst_lng]], color="#22c55e", weight=5, opacity=0.9,
+                    tooltip=f"거리 {dist_km:.2f} km, ETA {eta_text}").add_to(m)
+    folium.LatLngPopup().add_to(m)
+
+    out = st_folium(m, height=430, use_container_width=True)
+    if out and out.get("last_clicked"):
+        st.session_state.dst = {"lat": out["last_clicked"]["lat"], "lng": out["last_clicked"]["lng"]}
+        st.rerun()
+    st.caption(f"거리: {dist_km:.2f} km | 선속: {speed_kn:.1f} kn | ETA: {eta_text}  (현재는 직선 경로; 항로 규제/수심 미반영)")
+
+# ───────── 3열 배치: 왼쪽=Live Cam / 가운데=키보드 / 오른쪽=지도 ─────────
+col_cam, col_ctrl, col_map = st.columns([0.34, 0.32, 0.34], gap="large")
+with col_cam:
+    render_live_cam(cam_mode, cam_url)
+with col_ctrl:
+    # offset_px로 세로 위치 미세조정 (70~140 권장)
+    render_big_controller(
+        offset_px=90,
+        api_base=API_BASE,
+        pwm_val=pwm,
+        hz_val=hz,
+        timeout_sec=timeout_s,
+        send_zero=send_zero_on_release,
+    )
+with col_map:
+    render_map(pwm)
