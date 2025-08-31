@@ -146,9 +146,9 @@ def custom_sidebar():
     with st.sidebar:
         st.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
         st.markdown('<div class="sb-link">', unsafe_allow_html=True)
-        st.page_link("pages/1_5. 친환경 지수.py", label="🌱 친환경 지표")
-        st.page_link("pages/2_6. 안전 경보.py", label="⚠️ 안전/경보")
-        st.page_link("pages/3_7. 로그인.py",     label="🔐 로그인")
+        st.page_link("pages/4_4. 친환경_지표표.py", label="🌱 친환경 지표")
+        st.page_link("pages/3_3. 안전 경보.py", label="⚠️ 안전/경보")
+        st.page_link("pages/5_5. 로그인.py",     label="🔐 로그인")
         st.markdown('</div>', unsafe_allow_html=True)
 
 custom_sidebar()
