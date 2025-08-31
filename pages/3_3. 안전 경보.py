@@ -5,7 +5,7 @@ import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
@@ -210,7 +210,7 @@ def top_header():
     )
 
 top_header()
-st.caption("실측 기반 임계값 규칙으로 안전 상태를 판정하고, 경보를 기록합니다.")
+st.caption("운항 상태를 통해 안전 상태를 판정하고, 경보를 기록합니다.")
 st.markdown("""
 <style>
 /* 페이지 큰 제목은 이미 custom div로 작게 여백 설정됨. 아래는 소제목(=subheader)만 축소 */
@@ -349,12 +349,6 @@ def evaluate_rules(x):
     _push_alarm(alarms, "link_delay", "데이터 지연/끊김", "경고",
                 f"{x['link_age']:.1f} s > {THRESH['data_timeout_s']} s",
                 x["link_age"] > THRESH["data_timeout_s"])
-    _push_alarm(alarms, "pi_temp_crit", "라즈베리파이 과열", "위험",
-                f"{x['pi_temp']:.1f}°C > {THRESH['pi_temp_crit']}°C",
-                x["pi_temp"] > THRESH["pi_temp_crit"])
-    _push_alarm(alarms, "pi_temp_warn", "라즈베리파이 고온", "경고",
-                f"{x['pi_temp']:.1f}°C > {THRESH['pi_temp_warn']}°C",
-                x["pi_temp"] > THRESH["pi_temp_warn"])
     return alarms
 
 
@@ -374,9 +368,9 @@ st.session_state.last_sample = sample
 top_sev = max([SEVERITY_ORDER[a[1]] for a in alarms], default=0)
 
 # ------------------------------------------------------------
-# 실시간 시스템 상태 — 카드 5개 (사진 스타일)
+# 실시간 운항 상태 — 카드 5개 (사진 스타일)
 # ------------------------------------------------------------
-st.subheader("실시간 시스템 상태")
+st.subheader("실시간 운항 상태")
 
 # ✅ 카드 공용 CSS (사진 톤)
 st.markdown("""
@@ -460,8 +454,7 @@ with left_sec:
             - **충돌/장애물**: LiDAR 최소거리, **카메라 전방 감지**로 즉시 위험을 탐지합니다.  
             - **주행 상태**: 선박 속도가 임계치 이하이면 **추진 스톨**을 의심합니다.  
             - **구동 부하**: **모터 전류**로 과부하/이상 저항을 감시합니다.  
-            - **시스템/데이터**: **데이터 지연(link_age)** 과 라즈베리파이 온도(내부 룰)로 시스템 위험을 점검합니다.  
-            ※ 모든 경보는 위 지표의 **실측 값**에 기반합니다.
+            - **시스템/데이터**: **데이터 지연**으로 시스템 위험을 점검합니다.
             """
         )
 
@@ -521,9 +514,24 @@ st.dataframe(
     hide_index=True
 )
 
-# (1) 일괄 확인 버튼
-if st.button("전체 경보를 확인 처리합니다"):
-    st.toast("모든 경보를 확인 처리하였습니다.")
+# (1) 로그 전체 삭제 — 화이트 버튼
+col_btn, col_msg = st.columns([0.32, 0.68])
+
+with col_btn:
+    # 흰색 버튼(네가 써둔 .white-btn CSS 그대로 사용)
+    st.markdown('<div class="white-btn">', unsafe_allow_html=True)
+    if st.button("경보 로그 모두 삭제", key="btn_clear_all"):
+        st.session_state.alarm_log = st.session_state.alarm_log.iloc[0:0]
+        st.session_state.last_logged.clear()
+        st.session_state.clear_msg_until = datetime.now() + timedelta(seconds=4)
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_msg:
+    # 버튼 옆 메시지 슬롯
+    side_msg = st.empty()
+    if st.session_state.get("clear_msg_until") and datetime.now() < st.session_state["clear_msg_until"]:
+        side_msg.success("경보 로그를 초기화했습니다.")
 
 # 범례
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
