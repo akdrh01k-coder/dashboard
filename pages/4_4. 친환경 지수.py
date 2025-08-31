@@ -276,13 +276,38 @@ def top_header():
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
-    "<div style='font-size:26px; font-weight:800; margin:10px 0 2px 0;'>"
+    "<div style='font-size:26px; font-weight:800; margin:-10px 0 2px 0;'>"
     "🌱 친환경 지표"
     "</div>",
     unsafe_allow_html=True
     )
 
 top_header()
+st.caption("재생에너지 비중과 효율 지수를 기반으로 친환경 운항 상태를 평가합니다.")
+st.markdown("""
+<style>
+/* 페이지 큰 제목은 이미 custom div로 작게 여백 설정됨. 아래는 소제목(=subheader)만 축소 */
+h2, .stMarkdown h2 {
+  font-size: 20px !important;      /* 소제목을 페이지 제목보다 작게 */
+  margin-top: 8px !important;
+  margin-bottom: 6px !important;
+  line-height: 1.25 !important;
+}
+/* 기본 구분선 여백 줄이기 */
+hr { margin: 4px 0 !important; }
+/* 테이블(데이터프레임) 셀 패딩 살짝 축소 */
+[data-testid="stDataFrame"] .st-emotion-cache-1xarl3l,  /* header cell */
+[data-testid="stDataFrame"] .st-emotion-cache-1y4p8pa {  /* body cell */
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+/* expander 안쪽 문단 여백 축소 */
+[data-testid="stExpander"] p { margin: 4px 0 !important; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
+
 custom_sidebar()
 
 # ========== 친환경 지표 설정 ==========
@@ -296,11 +321,6 @@ CONFIG = {
     "EF_FC": 0.0,
     "EF_PV": 0.0,
 }
-
-
-
-st.caption("운영·분석용 데모 · 5초 자동 갱신")
-st.markdown("---")
 
 # ---------- 세션 ----------
 if "history" not in st.session_state:
