@@ -1,4 +1,4 @@
-# safety_dashboard.py — 안전/경보 페이지 (디자인 통일 + '임계 5s' 제목 옆 표시)
+# safety_dashboard.py
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -15,127 +15,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ========== 전역 스타일(메인 대시보드와 톤 맞춤) ==========
-st.markdown("""
-<style>
-/* 기본 요소 숨김(메뉴/기본헤더/푸터) */
-#MainMenu, header, footer {visibility: hidden;}
-
-/* 상단 고정 바와 충돌 안 나게 여백 확보 */
-.main .block-container { padding-top: 96px !important; }
-
-/* 사이드바 톤(밝은 회색) */
-section[data-testid="stSidebar"] {
-    background: #F1F1F9 !important;
-    border-right: 1px solid #F1F1F9;
-}
-
-/* 페이지 헤더(제목 바) */
-.page-header{
-  margin: 6px 0 16px 0; padding: 14px 16px;
-  background: linear-gradient(90deg,#eef4ff,#ffffff);
-  border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06);
-  display:flex; align-items:center; justify-content:space-between; gap:12px;
-}
-.page-title{font-size:22px; font-weight:800; color:#1f2b4d;}
-.page-sub{font-size:13px; color:#64748b;}
-
-/* KPI/카드 공통 */
-.dash-card {
-    background: #F6F7FB;
-    border: 1px solid #EBEDF5;
-    border-radius: 16px;
-    padding: 12px 14px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-}
-
-/* 상단 고정 헤더바 */
-.app-topbar{
-  position: fixed; top:0; left:0; right:0; height:64px;
-  display:flex; align-items:center; justify-content:space-between;
-  padding:0 22px; z-index:1000;
-  color:#fff; border-bottom:1px solid rgba(255,255,255,.15);
-  background:linear-gradient(90deg,#3b4a67 0%, #536a92 100%);
-  box-shadow:0 8px 24px rgba(0,0,0,.18);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-}
-.app-topbar .brand{ font-weight:800; letter-spacing:.2px; }
-.app-topbar .right{ display:flex; gap:14px; align-items:center; }
-.app-pill{ background:rgba(255,255,255,.18); padding:6px 10px; border-radius:999px; font-weight:700; }
-.app-link{ color:#fff; text-decoration:none; }
-.app-link:hover{ text-decoration:underline; }
-
-/* Streamlit 헤더 z-index 보정 */
-[data-testid="stHeader"] { z-index: 0 !important; background: transparent !important; }
-.app-topbar { z-index: 99999 !important; }
-[data-testid="stSidebarCollapseControl"],
-[data-testid="stSidebarCollapseButton"]{
-    position:fixed; top:12px; left:12px;
-    z-index:100000 !important;
-    display:flex !important; opacity:1 !important; pointer-events:auto !important;
-}
-
-/* 팀정보 카드(사이드바용) */
-.team-container {
-    background-color: #f7f8fc;
-    padding: 16px;
-    border-radius: 12px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.06);
-    font-family: 'Segoe UI', sans-serif;
-    margin-top: 8px;
-}
-.team-title {
-    font-size: 18px; font-weight: 800; margin-bottom: 6px;
-    color: #2c3e50 !important;
-}
-.team-subtitle {
-    font-size: 14px; font-weight: 700; margin-bottom: 6px;
-    color: #34495e !important;
-}
-.team-member { font-size: 13px; padding: 2px 0; color: #2c3e50 !important; }
-.mentor { margin-top: 10px; font-size: 12px; font-style: italic; color: #7f8c8d !important; }
-
-/* 소제목(=subheader) 간격 */
-h2, .stMarkdown h2 { font-size: 20px !important; margin-top: 8px !important; margin-bottom: 6px !important; line-height: 1.25 !important; }
-hr { margin: 4px 0 !important; }
-
-/* 데이터프레임 패딩 */
-[data-testid="stDataFrame"] .st-emotion-cache-1xarl3l,
-[data-testid="stDataFrame"] .st-emotion-cache-1y4p8pa { padding-top: 6px !important; padding-bottom: 6px !important; }
-
-/* expander 문단 여백 */
-[data-testid="stExpander"] p { margin: 4px 0 !important; }
-</style>
-""", unsafe_allow_html=True)
-
-# 상단 고정 헤더바(시계 포함)
-now_str = datetime.now().strftime("%H:%M:%S")
-st.markdown(f"""
-<div class="app-topbar">
-  <div class="brand">Eco-Friendship Dashboard</div>
-  <div class="right">
-    <div class="app-pill" id="clock">{now_str}</div>
-    <a class="app-pill app-link" href="?nav=%EB%A1%9C%EA%B7%B8%EC%9D%B8" target="_self" rel="noopener">Login</a>
-  </div>
-</div>
-<script>
-  function upd(){{
-    const el = document.getElementById('clock'); 
-    if(!el) return;
-    const n = new Date();
-    const t = [n.getHours(), n.getMinutes(), n.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
-    el.textContent = t;
-  }}
-  setInterval(upd, 1000); upd();
-</script>
-""", unsafe_allow_html=True)
-
-# ======== Sidebar (처음 버전으로 유지) ========
+# ======== Sidebar (minimal customize as requested) ========
 def custom_sidebar():
+    import os
     st.markdown("""
     <style>
       [data-testid="stSidebarNav"] { display: none !important; }
-      section[data-testid="stSidebar"] { background: #3E4A61 !important; color: #fff !important; }
+      section[data-testid="stSidebar"] {
+        background: #3E4A61 !important; color: #fff !important;
+      }
       section[data-testid="stSidebar"] * { color:#fff !important; }
       .sb-title { font-weight: 800; font-size: 20px; margin: 6px 0 8px 0; }
       .sb-link [data-testid="stPageLink"] a{ color:#fff !important; text-decoration:none !important; }
@@ -143,49 +31,240 @@ def custom_sidebar():
     </style>
     """, unsafe_allow_html=True)
 
-    with st.sidebar:
-        st.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sb-link">', unsafe_allow_html=True)
-        st.page_link("pages/4_4. 친환경_지표표.py", label="🌱 친환경 지표")
-        st.page_link("pages/3_3. 안전 경보.py", label="⚠️ 안전/경보")
-        st.page_link("pages/5_5. 로그인.py",     label="🔐 로그인")
-        st.markdown('</div>', unsafe_allow_html=True)
+    def page_link_if_exists(candidates, label):
+        for p in candidates:
+            if os.path.exists(p):
+                st.sidebar.page_link(p, label=label)
+                return
+
+    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
+
+    # 🏠 엔트리포인트(홈)
+    page_link_if_exists(["Home.py"], "🏠 홈")
+
+    # 🧭 메인 컨트롤
+    page_link_if_exists([
+        "pages/1_1. 메인_컨트롤.py",
+        "pages/1_1.메인_컨트롤.py",
+    ], "🧭 메인 컨트롤")
+
+    # ⚡ 에너지 모니터링
+    page_link_if_exists([
+        "pages/2_2. 에너지_모니터링.py",
+        "pages/2_2.에너지_모니터링.py",
+    ], "⚡ 에너지 모니터링")
+
+    # ⚠️ 안전 경보
+    page_link_if_exists([
+        "pages/3_3. 안전 경보.py",
+        "pages/3_3.안전 경보.py",
+        "pages/3_3. 안전_경보.py",
+        "pages/3_3.안전_경보.py",
+    ], "⚠️ 안전 경보")
+
+    # 🌱 친환경 지표 (띄어쓰기/언더스코어 모두 대응)
+    page_link_if_exists([
+        "pages/4_4. 친환경 지표.py",
+        "pages/4_4.친환경 지표.py",
+        "pages/4_4. 친환경_지표.py",
+        "pages/4_4.친환경_지표.py",
+    ], "🌱 친환경 지표")
+
+    # 🔐 로그인 (공백/무공백 모두 대응)
+    page_link_if_exists([
+        "pages/5_5. 로그인.py",
+        "pages/5_5.로그인.py",
+    ], "🔐 로그인")
+
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    <style>
+      /* 기본 사이드바 내비 숨김 (커스텀 링크 사용) */
+      [data-testid="stSidebarNav"] { display: none !important; }
+
+      /* 사이드바 배경/텍스트를 헤더와 통일 (div/section 모두 호환) */
+      section[data-testid="stSidebar"], div[data-testid="stSidebar"] {
+        background: #3E4A61 !important;
+        color: #fff !important;
+      }
+      section[data-testid="stSidebar"] *, div[data-testid="stSidebar"] * {
+        color: #fff !important;
+      }
+
+      /* 파일 상단 전역 CSS에서 넣었던 테두리/그림자 무력화 */
+      [data-testid="stSidebar"] > div:first-child {
+        background: transparent !important;
+        border-right: none !important;
+        box-shadow: none !important;
+      }
+
+      /* 제목 스타일 */
+      .sb-title {
+        font-weight: 800;
+        font-size: 20px;
+        margin: 6px 0 8px 0;
+      }
+
+      /* 링크 색/호버만 맞춤 */
+      .sb-link [data-testid="stPageLink"] a{
+        color:#fff !important;
+        text-decoration:none !important;
+        display:block;
+        padding:6px 8px;
+        border-radius:6px;
+      }
+      .sb-link [data-testid="stPageLink"] a:hover{
+        background: rgba(255,255,255,0.12);
+      }
+    </style>
+    """, unsafe_allow_html=True)
 
 custom_sidebar()
 
-# ========== 페이지 헤더 ==========
-def page_header(title: str, sub: str | None = None):
-    right = f"<div class='page-sub'>{sub}</div>" if sub else ""
-    st.markdown(f"""
-    <div class="page-header">
-      <div class="page-title">{title}</div>
-      {right}
-    </div>
-    """, unsafe_allow_html=True)
+# --- 세션 기본값 ---
+st.session_state.setdefault("logged_in", False)
 
-page_header("🛟 안전 · 경보", sub="실측 기반 임계값 규칙으로 안전 상태를 판정하고, 경보를 기록합니다.")
+# LOGOUT 처리 (헤더에서 ?logout=1로 이동시 세션 해제)
+qp = st.query_params
+if qp.get("logout") == "1":
+    st.session_state["logged_in"] = False
+    # 주소창 깔끔히 정리
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
+# =========================
+#  상단 헤더바 + 제목 (메인과 통일)
+# =========================
+def top_header():
+    # 레이아웃: [헤더(시계까지)] | [LOGIN]
+    left, right = st.columns([1, 0.13])  # 우측 폭은 필요시 0.12~0.16 사이로 조절
+
+    with left:
+        components.html(
+            """
+            <div id="topbar" style="
+                background:#3E4A61; color:white; padding:10px 20px;
+                display:flex; justify-content:space-between; align-items:center;
+                border-radius:8px; font-family:system-ui, -apple-system, Segoe UI, Roboto;">
+              <div style="font-size:18px; font-weight:700;">Eco-Friendship Dashboard</div>
+              <!-- 우측: 시계만 (여기서 헤더 끝) -->
+              <div style="font-size:14px;">
+                  <span id="clock"></span>
+              </div>
+            </div>
+            <script>
+              function updateClock(){
+                var n=new Date();
+                var h=String(n.getHours()).padStart(2,'0');
+                var m=String(n.getMinutes()).padStart(2,'0');
+                var s=String(n.getSeconds()).padStart(2,'0');
+                var el=document.getElementById('clock');
+                if(el) el.textContent=h+":"+m+":"+s;
+              }
+              updateClock();
+              setInterval(updateClock,1000);
+            </script>
+            """,
+            height=56,
+        )
+
+    with right:
+        # 헤더와 수직 정렬 맞춤 + 스타일 통일
+        st.markdown(
+            """
+            <style>
+              .login-right [data-testid="stPageLink"] a{
+                display:inline-block;
+                width:100%;
+                text-align:center;
+                color:white !important; font-weight:700; text-decoration:none !important;
+                background:#3E4A61; border:1px solid rgba(255,255,255,0.35);
+                height:56px; line-height:56px; border-radius:8px;
+              }
+              .login-right [data-testid="stPageLink"] a:hover{
+                background:#46526b; border-color:white;
+              }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        # ✅ 파일 경로 기준 (엔트리포인트에서 상대경로)
+        st.markdown('<div class="login-right">', unsafe_allow_html=True)
+        if not st.session_state.get("logged_in", False):
+            st.page_link("pages/5_5. 로그인.py", label="LOGIN")
+        else:
+            # 로그인 상태면 LOGOUT 버튼 (동일 톤)
+            if st.button("LOGOUT", use_container_width=True):
+                st.session_state["logged_in"] = False
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 페이지 큰 제목
+    st.markdown(
+        "<div style='font-size:26px; font-weight:800; margin:-10px 0 2px 0;'>⚠️ 안전/경보</div>",
+        unsafe_allow_html=True
+    )
+
+top_header()
+st.caption("실측 기반 임계값 규칙으로 안전 상태를 판정하고, 경보를 기록합니다.")
+st.markdown("""
+<style>
+/* 페이지 큰 제목은 이미 custom div로 작게 여백 설정됨. 아래는 소제목(=subheader)만 축소 */
+h2, .stMarkdown h2 {
+  font-size: 20px !important;      /* 소제목을 페이지 제목보다 작게 */
+  margin-top: 8px !important;
+  margin-bottom: 6px !important;
+  line-height: 1.25 !important;
+}
+/* 기본 구분선 여백 줄이기 */
+hr { margin: 4px 0 !important; }
+/* 테이블(데이터프레임) 셀 패딩 살짝 축소 */
+[data-testid="stDataFrame"] .st-emotion-cache-1xarl3l,  /* header cell */
+[data-testid="stDataFrame"] .st-emotion-cache-1y4p8pa {  /* body cell */
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+/* expander 안쪽 문단 여백 축소 */
+[data-testid="stExpander"] p { margin: 4px 0 !important; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
 
 # ------------------------------------------------------------
-# 임계값 — 측정 가능한 안전 지표만 사용
+# 임계값(예시) — 실제 시스템에 맞추어 조정하십시오.
 # ------------------------------------------------------------
 THRESH = {
-    "lidar_min_warn": 1.2,    # [m]
-    "lidar_min_crit": 0.5,    # [m]
-    "speed_stall_max": 0.05,  # [m/s]
-    "motor_i_warn": 3.0,      # [A]
-    "motor_i_crit": 6.0,      # [A]
-    "data_timeout_s": 5,      # [s]
-    "pi_temp_warn": 70.0,     # [°C]
-    "pi_temp_crit": 80.0,     # [°C],
+    # 전기/에너지
+    "motor_i_warn": 8.0,         # [A]
+    "motor_i_crit": 12.0,        # [A]
+    "uv_drop_under_load": 1.2,   # [V]
+
+    # 항법/주행
+    "lidar_min_warn": 1.0,       # [m]
+    "lidar_min_crit": 0.5,       # [m]
+    "gps_sats_min": 5,           # [개]
+    "speed_stall_max": 0.05,     # [m/s]
+    "stall_i_min": 5.0,          # [A]
+
+    # 시스템/데이터
+    "data_timeout_s": 5,         # [s]
+    "pi_temp_warn": 70.0,        # [°C]
+    "pi_temp_crit": 80.0,        # [°C]
 }
 
 SEVERITY_ORDER = {"주의": 1, "경고": 2, "위험": 3}
 
 # ------------------------------------------------------------
-# 경보 디바운스/쿨다운
+# 경보 디바운스/쿨다운(데모 완화: 트리거 빈도 제어)
 # ------------------------------------------------------------
 PERSIST_N = 1
 COOLDOWN_S = 0
+
 if "alarm_counters" not in st.session_state:
     st.session_state.alarm_counters = {}
 if "alarm_last_ts" not in st.session_state:
@@ -211,12 +290,13 @@ def _push_alarm(alarms, key, name, severity, detail, condition: bool):
         st.session_state.alarm_last_ts[key] = datetime.now()
 
 # ------------------------------------------------------------
-# 더미 데이터(6단계 시나리오)
+# 더미: 6단계 데모 시나리오(5초 주기)
 # ------------------------------------------------------------
 def read_latest(prev=None):
     now = datetime.now()
     phase = st.session_state.tick % 6
 
+    # 기본은 정상 범위
     lidar_min = 2.4 + np.random.normal(0, 0.15)
     cam_obstacle_center = False
     gps_speed = abs(0.55 + np.random.normal(0, 0.08))
@@ -224,6 +304,7 @@ def read_latest(prev=None):
     pi_temp = 55 + np.random.normal(0, 1.5)
     link_age = np.random.uniform(0, 1.0)
 
+    # 단계별 시나리오
     if phase == 1:
         cam_obstacle_center = True
     elif phase == 2:
@@ -245,9 +326,6 @@ def read_latest(prev=None):
         "link_age": link_age,
     }
 
-# ------------------------------------------------------------
-# 규칙 평가 → 경보 생성
-# ------------------------------------------------------------
 def evaluate_rules(x):
     alarms = []
     _push_alarm(alarms, "lidar_crit", "충돌 임박", "위험",
@@ -279,16 +357,16 @@ def evaluate_rules(x):
                 x["pi_temp"] > THRESH["pi_temp_warn"])
     return alarms
 
-# ------------------------------------------------------------
-# 세션 상태 및 샘플/알람 평가
-# ------------------------------------------------------------
+
+
 if "last_sample" not in st.session_state:
-    st.session_state.last_sample = None
+        st.session_state.last_sample = None
 if "alarm_log" not in st.session_state:
-    st.session_state.alarm_log = pd.DataFrame(columns=["시간", "경보 종류", "심각도", "세부"])
+        st.session_state.alarm_log = pd.DataFrame(columns=["시간", "경보 종류", "심각도", "세부"])
 if "last_logged" not in st.session_state:
-    st.session_state.last_logged = {}
+        st.session_state.last_logged = {}
 LOG_COOLDOWN_S = 20
+
 
 sample = read_latest(st.session_state.last_sample)
 alarms = evaluate_rules(sample)
@@ -296,71 +374,70 @@ st.session_state.last_sample = sample
 top_sev = max([SEVERITY_ORDER[a[1]] for a in alarms], default=0)
 
 # ------------------------------------------------------------
-# 실시간 시스템 상태 — 카드 5개
+# 실시간 시스템 상태 — 카드 5개 (사진 스타일)
 # ------------------------------------------------------------
 st.subheader("실시간 시스템 상태")
 
+# ✅ 카드 공용 CSS (사진 톤)
+st.markdown("""
+<style>
+.status-card{
+  background:#E8FAF1;                 /* 연한 민트 배경 */
+  border:1px solid #C8EEDC;            /* 연녹 테두리 */
+  border-radius:18px;                  /* 둥근 모서리 */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04); /* 아주 약한 그림자 */
+  padding:16px 18px;
+  min-height:110px;                    /* 높이 통일감 */
+  display:flex; flex-direction:column; justify-content:center;
+}
+.status-card .title{
+  display:flex; align-items:center; gap:10px; flex-wrap:nowrap;
+  font-weight:800; font-size:18px; color:#0b3d2e; /* 진한 녹 톤 */
+}
+.status-card .title .icon{ font-size:20px; line-height:1; }
+.status-card .title .tag{ font-size:12px; font-weight:600; color:#6b7280; margin-left:4px; }
+.status-card .value{
+  margin-top:8px;
+  font-size:22px; font-weight:800; color:#0b3d2e;  /* 값은 더 굵고 크게 */
+  text-align:center;
+}
+.status-card .sub{
+  margin-top:4px; font-size:12px; opacity:.85;
+}
+</style>
+""", unsafe_allow_html=True)
+
 def stat_card(icon: str, title: str, value: str, sub: str | None = None,
               tone: str = "neutral", title_tag: str | None = None):
-    gradients = {
-        "neutral": "linear-gradient(135deg, #EEF2FF 0%, #E9F5FF 100%)",
-        "ok":      "linear-gradient(135deg, #E6FFF5 0%, #EAFFF0 100%)",
-        "warn":    "linear-gradient(135deg, #FFF7E6 0%, #FFF1E6 100%)",
-        "danger":  "linear-gradient(135deg, #FFE6EA 0%, #FFD6E1 100%)",
-    }
-    borders = { "neutral": "#c9d6ea", "ok": "#9ad7a6", "warn": "#f3cc69", "danger": "#f08b86" }
-    bg = gradients.get(tone, gradients["neutral"])
-    bd = borders.get(tone, borders["neutral"])
-
+    # tone 파라미터는 무시(사진처럼 단일 스타일)
     html = f"""
-    <div class="dash-card" style="background:{bg}; border:1px solid {bd}; text-align:center;">
-      <div style="
-        font-size:18px; font-weight:800;
-        display:flex; justify-content:center; gap:6px; align-items:center; flex-wrap:wrap;">
-        <span style="font-size:20px;">{icon}</span>
+    <div class="status-card">
+      <div class="title">
+        <span class="icon">{icon}</span>
         <span>{title}</span>
-        {f"<span style='font-size:12px; font-weight:600; color:#64748b; margin-left:2px;'>{title_tag}</span>" if title_tag else ""}
+        {'<span class="tag">'+title_tag+'</span>' if title_tag else ''}
       </div>
-      <div style="font-size:20px; font-weight:800; margin-top:6px;">{value}</div>
-      {"<div style='opacity:0.8; margin-top:4px; font-size:12px;'>"+sub+"</div>" if sub else ""}
+      <div class="value">{value}</div>
+      {f'<div class="sub">{sub}</div>' if sub else ''}
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
 
+# 그대로 사용
 TH = THRESH
 c1, c2, c3, c4, c5 = st.columns(5)
 
-# 1. LiDAR
-tone_lidar = "danger" if sample["lidar_min"] < TH["lidar_min_crit"] else ("warn" if sample["lidar_min"] < TH["lidar_min_warn"] else "ok")
 with c1:
-    stat_card("📡", "LiDAR 최소거리", f"{sample['lidar_min']:.2f} m", tone=tone_lidar)
-
-# 2. 카메라
-cam_status = "감지됨" if sample["cam_obstacle_center"] else "정상"
-tone_cam = "danger" if sample["cam_obstacle_center"] else "ok"
+    stat_card("📡", "LiDAR 최소거리", f"{sample['lidar_min']:.2f} m")
 with c2:
-    stat_card("🎥", "카메라 전방", cam_status, tone=tone_cam)
-
-# 3. 속도
-tone_speed = "warn" if sample["gps_speed"] <= TH["speed_stall_max"] else "ok"
+    stat_card("🎥", "카메라 전방", "감지됨" if sample["cam_obstacle_center"] else "정상")
 with c3:
-    stat_card("🚤", "선박 속도", f"{sample['gps_speed']:.2f} m/s", tone=tone_speed)
-
-# 4. 모터 전류
-tone_motor = "danger" if sample["motor_i"] > TH["motor_i_crit"] else ("warn" if sample["motor_i"] > TH["motor_i_warn"] else "ok")
+    stat_card("🚤", "선박 속도", f"{sample['gps_speed']:.2f} m/s")
 with c4:
-    stat_card("⚙️", "모터 전류", f"{sample['motor_i']:.2f} A", tone=tone_motor)
-
-# 5. 데이터 지연 — (임계 5s) 제목 옆(작은 글씨 유지)
-tone_link = "warn" if sample["link_age"] > TH["data_timeout_s"] else "ok"
+    stat_card("⚙️", "모터 전류", f"{sample['motor_i']:.2f} A")
 with c5:
-    stat_card(
-        icon="📶",
-        title="데이터 지연",
-        value=f"{sample['link_age']:.2f} s",
-        tone=tone_link,
-        title_tag=f"(임계 {TH['data_timeout_s']}s)"  # ← 원래 작은 크기(12px)로 표시
-    )
+    stat_card("📶", "데이터 지연", f"{sample['link_age']:.2f} s", title_tag=f"(임계 {TH['data_timeout_s']}s)")
+
 # ------------------------------------------------------------
 # 좌/우 레이아웃: 상태 배너 & 현재 경보 테이블
 # ------------------------------------------------------------
