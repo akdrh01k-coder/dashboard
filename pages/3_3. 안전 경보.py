@@ -393,6 +393,7 @@ st.markdown("""
 .status-card .title{
   display:flex; align-items:center; gap:10px; flex-wrap:nowrap;
   font-weight:800; font-size:18px; color:#0b3d2e; /* 진한 녹 톤 */
+  justify-content:center; text-align:center;
 }
 .status-card .title .icon{ font-size:20px; line-height:1; }
 .status-card .title .tag{ font-size:12px; font-weight:600; color:#6b7280; margin-left:4px; }
