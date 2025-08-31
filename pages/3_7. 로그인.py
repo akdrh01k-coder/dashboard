@@ -2,6 +2,7 @@
 import streamlit as st
 import random
 import string
+import os
 from datetime import datetime, timedelta
 
 # -----------------------------
@@ -36,11 +37,20 @@ def custom_sidebar():
     """, unsafe_allow_html=True)
 
     st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
-
     st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
-    st.sidebar.page_link("pages/1_5. 친환경 지수.py", label="🌱 친환경 지수")
-    st.sidebar.page_link("pages/2_6. 안전 경보.py", label="⚠️ 안전/경보")
-    st.sidebar.page_link("pages/3_7. 로그인.py",     label="🔐 로그인")
+
+    # ✅ 실제 존재하는 파일에만 링크 노출 (한글/띄어쓰기 정확히!)
+    if os.path.exists("pages/1_1. 메인_컨트롤.py"):
+        st.sidebar.page_link("pages/1_1. 메인_컨트롤.py", label="🧭 메인 컨트롤")
+    if os.path.exists("pages/2_2. 에너지_모니터링.py"):
+        st.sidebar.page_link("pages/2_2. 에너지_모니터링.py", label="⚡ 에너지 모니터링")
+    if os.path.exists("pages/3_3. 안전 경보.py"):
+        st.sidebar.page_link("pages/3_3. 안전 경보.py", label="⚠️ 안전/경보")
+    if os.path.exists("pages/4_4. 친환경 지표.py"):
+        st.sidebar.page_link("pages/4_4. 친환경 지표.py", label="🌱 친환경 지표")
+    if os.path.exists("pages/5_5. 로그인.py"):
+        st.sidebar.page_link("pages/5_5. 로그인.py", label="🔐 로그인")
+
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 custom_sidebar()
@@ -139,7 +149,8 @@ def show_login_page():
                 st.session_state["logged_in"] = True
                 st.session_state["username"] = username
                 st.success("로그인에 성공했습니다.")
-                st.rerun()
+                # ✅ 로그인 성공 시 메인 컨트롤 페이지로 이동
+                st.switch_page("pages/1_1. 메인_컨트롤.py")
             else:
                 st.error("사용자 이름 또는 비밀번호가 올바르지 않습니다.")
 
@@ -150,6 +161,16 @@ def show_login_page():
     with rcol:
         if st.button("🛡️ 관리자 등록", type="secondary", use_container_width=True):
             nav_to("admin")
+
+    # --- 안내 문구(※, 괄호 포함) ---
+    st.divider()
+    st.markdown(
+        "※ 본 로그인 화면은 **개발/테스트용 임시 페이지**입니다.\n"
+        "관리자 접속 시 아래 샘플 계정을 사용하세요.\n\n"
+        "- 사용자 이름: `admin`\n"
+        "- 비밀번호: `1234`\n\n"
+        "(추후 실제 서비스 시에는 변경될 수 있습니다.)"
+    )
 
 # -----------------------------
 # 비밀번호 찾기 화면
@@ -163,7 +184,7 @@ def show_forgot_page():
 
     # 코드 발급
     u = st.text_input("사용자 이름", placeholder="내 아이디", key="pw_user")
-    email_hint = st.text_input("등록 이메일(선택)", placeholder="name@example.com", key="pw_email")
+    st.text_input("등록 이메일(선택)", placeholder="name@example.com", key="pw_email")
     if st.button("재설정 코드 보내기"):
         if not user_exists(u):
             st.error("해당 사용자가 없거나 비활성화 상태입니다.")
@@ -199,7 +220,6 @@ def show_forgot_page():
             st.session_state.pw_reset.pop(u2, None)
             st.success("비밀번호가 재설정되었습니다. 로그인 페이지로 돌아가 로그인하십시오.")
 
-
 # -----------------------------
 # 관리자 등록 화면
 # -----------------------------
@@ -233,33 +253,13 @@ def show_admin_page():
             create_or_activate_user(new_user, new_pw, new_email)
             st.success("계정이 활성화되었습니다. 로그인 페이지에서 방금 만든 계정으로 로그인하십시오.")
 
-
-# -----------------------------
-# 로그인 이후 메인
-# -----------------------------
-def show_main_page():
-    st.markdown(
-        "<h1 style='text-align:center;'>🎉 환영합니다!</h1>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"<h3 style='text-align:center;'>{st.session_state['username']}님, 성공적으로 로그인하였습니다.</h3>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1, 1, 1])
-    with c2:
-        if st.button("🔓 로그아웃", use_container_width=True):
-            st.session_state["logged_in"] = False
-            st.session_state["username"] = None
-            st.session_state["view"] = "login"
-            st.rerun()
-
 # -----------------------------
 # 라우팅
 # -----------------------------
 if st.session_state["logged_in"]:
-    show_main_page()
+    # 로그인 성공 시에는 이미 switch_page로 넘어가므로,
+    # 혹시 직접 URL로 들어온 경우만 방어적으로 로그인 페이지 렌더
+    show_login_page()
 else:
     if st.session_state["view"] == "login":
         show_login_page()
