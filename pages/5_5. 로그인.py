@@ -46,8 +46,8 @@ def custom_sidebar():
         st.sidebar.page_link("pages/2_2. 에너지_모니터링.py", label="⚡ 에너지 모니터링")
     if os.path.exists("pages/3_3. 안전 경보.py"):
         st.sidebar.page_link("pages/3_3. 안전 경보.py", label="⚠️ 안전/경보")
-    if os.path.exists("pages/4_4. 친환경 지표.py"):
-        st.sidebar.page_link("pages/4_4. 친환경 지표.py", label="🌱 친환경 지표")
+    if os.path.exists("pages/4_4. 친환경_지표.py"):
+        st.sidebar.page_link("pages/4_4. 친환경_지표.py", label="🌱 친환경 지표")
     if os.path.exists("pages/5_5. 로그인.py"):
         st.sidebar.page_link("pages/5_5. 로그인.py", label="🔐 로그인")
 
