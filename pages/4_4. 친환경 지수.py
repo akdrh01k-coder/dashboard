@@ -1,30 +1,17 @@
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_option_menu import option_menu  # ✅ 추가
+from streamlit_option_menu import option_menu
 import numpy as np
 import plotly.graph_objects as go
 import pandas as pd
 from datetime import datetime
-from urllib import parse as _url
 import time
+from urllib import parse as _url
 
-# ========== 기본 설정 ==========
-st.set_page_config(
-    page_title="친환경 지표",
-    page_icon="🌱",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
-# ✅ 기본 멀티페이지 사이드바 내비 숨김 (option_menu/커스텀만 보이게)
-st.markdown("""
-<style>
-  [data-testid="stSidebarNav"] { display: none !important; }
-  section[data-testid="stSidebar"] nav { display: none !important; }
-</style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="친환경 지표", layout="wide")
 
-# ========== 팔레트 ==========
+# ---------- 스타일 팔레트 (가장 먼저 선언) ----------
 COL = {
     "primary":  "#2563eb",
     "title":    "#0f172a",
@@ -41,50 +28,23 @@ COL = {
     "other":    "#e2e8f0",
     "motor":    "#475569",
     "teal":     "#14b8a6",
-    "sidebar_bg": "#F1F1F9",
+    "sidebar_bg": "#f8fafc",
 }
 
-# ========== 전역 스타일 ==========
-now_str = datetime.now().strftime("%H:%M:%S")
+# ---------- 전역 CSS ----------
 st.markdown(f"""
 <style>
-/* 기본 UI 정리 */
-#MainMenu, header, footer {{visibility: hidden;}}
-.main .block-container {{ padding-top: 96px !important; }}  /* 상단바와 여백 매칭 */
-
-/* 상단 고정 헤더바 (메인/안전 페이지와 동일) */
-.app-topbar{{
-  position: fixed; top:0; left:0; right:0; height:64px;
-  display:flex; align-items:center; justify-content:space-between;
-  padding:0 22px; z-index:1000;
-  color:#fff; border-bottom:1px solid rgba(255,255,255,.15);
-  background:linear-gradient(90deg,#3b4a67 0%, #536a92 100%);
-  box-shadow:0 8px 24px rgba(0,0,0,.18);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+.stApp {{
+  background: {COL["app_bg"]};
+  color: #1f2937;
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', sans-serif;
 }}
-.app-topbar .brand{{ font-weight:800; letter-spacing:.2px; }}
-.app-topbar .right{{ display:flex; gap:14px; align-items:center; }}
-.app-pill{{ background:rgba(255,255,255,.18); padding:6px 10px; border-radius:999px; font-weight:700; }}
-.app-link{{ color:#fff; text-decoration:none; }}
-.app-link:hover{{ text-decoration:underline; }}
-
-/* 페이지 상단 섹션 헤더 */
-.page-header{{
-  margin: 6px 0 16px 0; padding: 14px 16px;
-  background: linear-gradient(90deg,#eef4ff,#ffffff);
-  border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06);
-  display:flex; align-items:center; justify-content:space-between; gap:12px;
-}}
-.page-title{{font-size:22px; font-weight:800; color:#1f2b4d;}}
-.page-sub{{font-size:13px; color:#64748b;}}
-
-/* 카드 공통 */
 .card {{
   background: {COL["card"]};
   border: 1px solid {COL["border"]};
   border-radius: 14px;
   padding: 12px;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 1px rgba(16,24,40,.02);
 }}
 .card-header {{
   background: {COL["header"]};
@@ -113,88 +73,216 @@ st.markdown(f"""
 }}
 .action-box ul {{ margin: 0 0 0 18px; padding: 0; }}
 .action-box li {{ font-size: 12.5px; color: #334155; margin: 4px 0; }}
-.big-num {{ font-weight: 900; font-size: 28px; color: {COL["title"]}; }}
-.subtle {{ color:#334155; opacity:.9; font-size:13px; }}
-
-/* 헤더/사이드바 토글 버튼 z-index */
-[data-testid="stHeader"] {{ z-index: 0 !important; background: transparent !important; }}
-.app-topbar {{ z-index: 99999 !important; }}
-[data-testid="stSidebarCollapseControl"],
-[data-testid="stSidebarCollapseButton"]{{
-  position:fixed; top:12px; left:12px;
-  z-index:100000 !important;
-  display:flex !important; opacity:1 !important; pointer-events:auto !important;
+[data-testid="stSidebar"] > div:first-child {{
+  background: {COL["sidebar_bg"]};      /* 연한 회색으로 복구 */
+  border-right: 1px solid {COL["border"]};
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.02) inset;
 }}
 
+div[data-testid="stSidebarNav"] a {{ border-radius: 10px; }}
+div[data-testid="stSidebarNav"] a[aria-current="page"] {{
+  background: #e9f0ff; color: {COL["primary"]} !important; font-weight: 700;
+}}
+
+[data-testid="stMetricValue"] {{ font-weight: 800; color: {COL["title"]}; }}
+[data-testid="stMetricDelta"] {{ font-weight: 700; }}
+
 </style>
-
-<!-- 상단 고정 헤더바 -->
-<div class="app-topbar">
-  <div class="brand">Eco-Friendship Dashboard</div>
-  <div class="right">
-    <div class="app-pill" id="clock">{now_str}</div>
-    <a class="app-pill app-link" href="/pages/3_7. 로그인" target="_self" rel="noopener">Login</a>
-</div>
-
-<script>
-  function upd(){{
-    const el = document.getElementById('clock'); 
-    if(!el) return;
-    const n = new Date();
-    const t = [n.getHours(), n.getMinutes(), n.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
-    el.textContent = t;
-  }}
-  setInterval(upd, 1000); upd();
-</script>
 """, unsafe_allow_html=True)
 
-# ========== 페이지 상단 헤더 ==========
-def page_header(title: str, subtitle: str | None = None):
-    right = f"<div class='page-sub'>{subtitle}</div>" if subtitle else ""
-    st.markdown(
-        f"""
-        <div class="page-header">
-          <div class="page-title">{title}</div>
-          {right}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+st.markdown("""
+<style>
+.big-num { 
+  font-size: 40px;      /* 더 크게 */
+  font-weight: 900;     /* 더 굵게 */
+  letter-spacing: -0.01em;
+  margin: 2px 0 6px 2px;
+  color: #0f172a;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# ======== Sidebar (기존 유지, 약간의 스타일만) ========
+# ======== Sidebar (minimal customize as requested) ========
+
 def custom_sidebar():
+    import os
     st.markdown("""
     <style>
       [data-testid="stSidebarNav"] { display: none !important; }
       section[data-testid="stSidebar"] {
+        background: #3E4A61 !important; color: #fff !important;
+      }
+      section[data-testid="stSidebar"] * { color:#fff !important; }
+      .sb-title { font-weight: 800; font-size: 20px; margin: 6px 0 8px 0; }
+      .sb-link [data-testid="stPageLink"] a{ color:#fff !important; text-decoration:none !important; }
+      .sb-link [data-testid="stPageLink"] a:hover{ background: rgba(255,255,255,0.12); border-radius: 6px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    def page_link_if_exists(candidates, label):
+        for p in candidates:
+            if os.path.exists(p):
+                st.sidebar.page_link(p, label=label)
+                return
+
+    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
+
+    # 🏠 엔트리포인트(홈)
+    page_link_if_exists(["Home.py"], "🏠 홈")
+
+    # 🧭 메인 컨트롤
+    page_link_if_exists([
+        "pages/1_1. 메인_컨트롤.py",
+        "pages/1_1.메인_컨트롤.py",
+    ], "🧭 메인 컨트롤")
+
+    # ⚡ 에너지 모니터링
+    page_link_if_exists([
+        "pages/2_2. 에너지_모니터링.py",
+        "pages/2_2.에너지_모니터링.py",
+    ], "⚡ 에너지 모니터링")
+
+    # ⚠️ 안전 경보
+    page_link_if_exists([
+        "pages/3_3. 안전 경보.py",
+        "pages/3_3.안전 경보.py",
+        "pages/3_3. 안전_경보.py",
+        "pages/3_3.안전_경보.py",
+    ], "⚠️ 안전 경보")
+
+    # 🌱 친환경 지표 (띄어쓰기/언더스코어 모두 대응)
+    page_link_if_exists([
+        "pages/4_4. 친환경 지표.py",
+        "pages/4_4.친환경 지표.py",
+        "pages/4_4. 친환경_지표.py",
+        "pages/4_4.친환경_지표.py",
+    ], "🌱 친환경 지표")
+
+    # 🔐 로그인 (공백/무공백 모두 대응)
+    page_link_if_exists([
+        "pages/5_5. 로그인.py",
+        "pages/5_5.로그인.py",
+    ], "🔐 로그인")
+
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    <style>
+      /* 기본 사이드바 내비 숨김 (커스텀 링크 사용) */
+      [data-testid="stSidebarNav"] { display: none !important; }
+
+      /* 사이드바 배경/텍스트를 헤더와 통일 (div/section 모두 호환) */
+      section[data-testid="stSidebar"], div[data-testid="stSidebar"] {
         background: #3E4A61 !important;
         color: #fff !important;
       }
-      section[data-testid="stSidebar"] * { color:#fff !important; }
+      section[data-testid="stSidebar"] *, div[data-testid="stSidebar"] * {
+        color: #fff !important;
+      }
+
+      /* 파일 상단 전역 CSS에서 넣었던 테두리/그림자 무력화 */
+      [data-testid="stSidebar"] > div:first-child {
+        background: transparent !important;
+        border-right: none !important;
+        box-shadow: none !important;
+      }
+
+      /* 제목 스타일 */
       .sb-title {
         font-weight: 800;
         font-size: 20px;
         margin: 6px 0 8px 0;
       }
+
+      /* 링크 색/호버만 맞춤 */
       .sb-link [data-testid="stPageLink"] a{
         color:#fff !important;
         text-decoration:none !important;
+        display:block;
+        padding:6px 8px;
+        border-radius:6px;
       }
       .sb-link [data-testid="stPageLink"] a:hover{
         background: rgba(255,255,255,0.12);
-        border-radius: 6px;
       }
     </style>
     """, unsafe_allow_html=True)
 
-    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
 
-    st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
-    st.sidebar.page_link("pages/4_4. 친환경_지표.py", label="🌱 친환경 지표")
-    st.sidebar.page_link("pages/3_3. 안전 경보.py", label="⚠️ 안전/경보")
-    st.sidebar.page_link("pages/5_5. 로그인.py", label="🔐 로그인")
-    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+# =========================
+#  상단 헤더바 + 제목 (메인과 통일)
+# =========================
+def top_header():
+    # 레이아웃: [헤더(시계까지)] | [LOGIN]
+    left, right = st.columns([1, 0.13])  # 우측 폭은 필요시 0.12~0.16 사이로 조절
 
+    with left:
+        components.html(
+            """
+            <div id="topbar" style="
+                background:#3E4A61; color:white; padding:10px 20px;
+                display:flex; justify-content:space-between; align-items:center;
+                border-radius:8px; font-family:system-ui, -apple-system, Segoe UI, Roboto;">
+              <div style="font-size:18px; font-weight:700;">Eco-Friendship Dashboard</div>
+              <!-- 우측: 시계만 (여기서 헤더 끝) -->
+              <div style="font-size:14px;">
+                  <span id="clock"></span>
+              </div>
+            </div>
+            <script>
+              function updateClock(){
+                var n=new Date();
+                var h=String(n.getHours()).padStart(2,'0');
+                var m=String(n.getMinutes()).padStart(2,'0');
+                var s=String(n.getSeconds()).padStart(2,'0');
+                var el=document.getElementById('clock');
+                if(el) el.textContent=h+":"+m+":"+s;
+              }
+              updateClock();
+              setInterval(updateClock,1000);
+            </script>
+            """,
+            height=56,
+        )
+
+    with right:
+        # 헤더와 수직 정렬 맞춤 + 스타일 통일
+        st.markdown(
+            """
+            <style>
+              .login-right [data-testid="stPageLink"] a{
+                display:inline-block;
+                width:100%;
+                text-align:center;
+                color:white !important; font-weight:700; text-decoration:none !important;
+                background:#3E4A61; border:1px solid rgba(255,255,255,0.35);
+                height:56px; line-height:56px; border-radius:8px;
+              }
+              .login-right [data-testid="stPageLink"] a:hover{
+                background:#46526b; border-color:white;
+              }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown('<div class="login-right">', unsafe_allow_html=True)
+        if not st.session_state.get("logged_in", False):
+            st.page_link("pages/5_5. 로그인.py", label="LOGIN")
+        else:
+            if st.button("LOGOUT", use_container_width=True):
+                st.session_state["logged_in"] = False
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(
+    "<div style='font-size:26px; font-weight:800; margin:10px 0 2px 0;'>"
+    "🌱 친환경 지표"
+    "</div>",
+    unsafe_allow_html=True
+    )
+
+top_header()
 custom_sidebar()
 
 # ========== 친환경 지표 설정 ==========
@@ -209,8 +297,10 @@ CONFIG = {
     "EF_PV": 0.0,
 }
 
-# ========== 상단 페이지 타이틀 ==========
-page_header("🌱 친환경 지표")
+
+
+st.caption("운영·분석용 데모 · 5초 자동 갱신")
+st.markdown("---")
 
 # ---------- 세션 ----------
 if "history" not in st.session_state:
