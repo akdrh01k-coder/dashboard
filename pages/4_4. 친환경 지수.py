@@ -1,4 +1,3 @@
-# pages/1_5. 친환경 지수.py
 import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_option_menu import option_menu  # ✅ 추가
@@ -191,9 +190,9 @@ def custom_sidebar():
     st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
 
     st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
-    st.sidebar.page_link("pages/1_5. 친환경 지수.py", label="🌱 친환경 지표")
-    st.sidebar.page_link("pages/2_6. 안전 경보.py", label="⚠️ 안전/경보")
-    st.sidebar.page_link("pages/3_7. 로그인.py",     label="🔐 로그인")
+    st.sidebar.page_link("pages/4_4. 친환경_지표.py", label="🌱 친환경 지표")
+    st.sidebar.page_link("pages/3_3. 안전 경보.py", label="⚠️ 안전/경보")
+    st.sidebar.page_link("pages/5_5. 로그인.py", label="🔐 로그인")
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 custom_sidebar()
