@@ -1,4 +1,4 @@
-# login_app.py
+# 5_5.로그인.py
 import streamlit as st
 import random
 import string
@@ -10,46 +10,67 @@ from datetime import datetime, timedelta
 # -----------------------------
 st.set_page_config(page_title="Streamlit 로그인", page_icon="🔐", layout="centered")
 
-# ======== Sidebar (minimal customize as requested) ========
+# ======== Sidebar (robust links) ========
 def custom_sidebar():
+    import os
     st.markdown("""
     <style>
       [data-testid="stSidebarNav"] { display: none !important; }
       section[data-testid="stSidebar"] {
-        background: #3E4A61 !important;
-        color: #fff !important;
+        background: #3E4A61 !important; color: #fff !important;
       }
       section[data-testid="stSidebar"] * { color:#fff !important; }
-      .sb-title {
-        font-weight: 800;
-        font-size: 20px;
-        margin: 6px 0 8px 0;
-      }
-      .sb-link [data-testid="stPageLink"] a{
-        color:#fff !important;
-        text-decoration:none !important;
-      }
-      .sb-link [data-testid="stPageLink"] a:hover{
-        background: rgba(255,255,255,0.12);
-        border-radius: 6px;
-      }
+      .sb-title { font-weight: 800; font-size: 20px; margin: 6px 0 8px 0; }
+      .sb-link [data-testid="stPageLink"] a{ color:#fff !important; text-decoration:none !important; }
+      .sb-link [data-testid="stPageLink"] a:hover{ background: rgba(255,255,255,0.12); border-radius: 6px; }
     </style>
     """, unsafe_allow_html=True)
+
+    def page_link_if_exists(candidates, label):
+        for p in candidates:
+            if os.path.exists(p):
+                st.sidebar.page_link(p, label=label)
+                return
 
     st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
 
-    # ✅ 실제 존재하는 파일에만 링크 노출 (한글/띄어쓰기 정확히!)
-    if os.path.exists("pages/1_1. 메인_컨트롤.py"):
-        st.sidebar.page_link("pages/1_1. 메인_컨트롤.py", label="🧭 메인 컨트롤")
-    if os.path.exists("pages/2_2. 에너지_모니터링.py"):
-        st.sidebar.page_link("pages/2_2. 에너지_모니터링.py", label="⚡ 에너지 모니터링")
-    if os.path.exists("pages/3_3. 안전 경보.py"):
-        st.sidebar.page_link("pages/3_3. 안전 경보.py", label="⚠️ 안전/경보")
-    if os.path.exists("pages/4_4. 친환경_지표.py"):
-        st.sidebar.page_link("pages/4_4. 친환경_지표.py", label="🌱 친환경 지표")
-    if os.path.exists("pages/5_5. 로그인.py"):
-        st.sidebar.page_link("pages/5_5. 로그인.py", label="🔐 로그인")
+    # 🏠 엔트리포인트(홈)
+    page_link_if_exists(["Home.py"], "🏠 홈")
+
+    # 🧭 메인 컨트롤
+    page_link_if_exists([
+        "pages/1_1. 메인_컨트롤.py",
+        "pages/1_1.메인_컨트롤.py",
+    ], "🧭 메인 컨트롤")
+
+    # ⚡ 에너지 모니터링
+    page_link_if_exists([
+        "pages/2_2. 에너지_모니터링.py",
+        "pages/2_2.에너지_모니터링.py",
+    ], "⚡ 에너지 모니터링")
+
+    # ⚠️ 안전 경보
+    page_link_if_exists([
+        "pages/3_3. 안전 경보.py",
+        "pages/3_3.안전 경보.py",
+        "pages/3_3. 안전_경보.py",
+        "pages/3_3.안전_경보.py",
+    ], "⚠️ 안전 경보")
+
+    # 🌱 친환경 지표 (띄어쓰기/언더스코어 모두 대응)
+    page_link_if_exists([
+        "pages/4_4. 친환경 지표.py",
+        "pages/4_4.친환경 지표.py",
+        "pages/4_4. 친환경_지표.py",
+        "pages/4_4.친환경_지표.py",
+    ], "🌱 친환경 지표")
+
+    # 🔐 로그인 (공백/무공백 모두 대응)
+    page_link_if_exists([
+        "pages/5_5. 로그인.py",
+        "pages/5_5.로그인.py",
+    ], "🔐 로그인")
 
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
