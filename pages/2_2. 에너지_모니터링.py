@@ -649,13 +649,12 @@ with colR:
 with colL:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown(
-            f'<div class="card-header"><div class="card-title">🔌 배터리 충·방전 · 상태</div></div>',
-            unsafe_allow_html=True,
-        )
-
+        f'<div class="card-header"><div class="card-title">🔌 배터리 충·방전 · 상태</div></div>',
+        unsafe_allow_html=True,
+    )
 
     # 간단한 배터리 모델(충/방전 전력 = PV+FC-Motor)
-    BATT_CAP_WH = 240.0        # 12V 20Ah 가정
+    BATT_CAP_WH = 240.0      # 12V 20Ah 가정
     if "batt_soc" not in st.session_state: st.session_state["batt_soc"] = 0.65
     if "batt_hist" not in st.session_state:
         st.session_state["batt_hist"] = pd.DataFrame(columns=["time","w","soc"])
@@ -685,9 +684,15 @@ with colL:
     </div>
     """, unsafe_allow_html=True)
 
+    # ⭐️ 1. 이동 평균 계산 (이 줄을 추가하세요)
+    # window=5는 최근 5개 데이터의 평균을 사용하겠다는 의미입니다. 숫자를 키우면 더 부드러워집니다.
+    # min_periods=1은 데이터가 5개 미만일 때도 가능한 만큼만 평균을 내서 처음부터 그래프가 보이게 합니다.
+    bh['w_smooth'] = bh['w'].rolling(window=5, min_periods=1).mean()
+
     # 충/방전 전력 스파크라인
     fig_b = go.Figure()
-    fig_b.add_scatter(x=bh["time"], y=bh["w"], mode="lines", name="Batt W",
+    # ⭐️ 2. 그래프를 그릴 때 y축 데이터를 'w_smooth'로 변경
+    fig_b.add_scatter(x=bh["time"], y=bh["w_smooth"], mode="lines", name="Batt W",
                       line=dict(width=2, color="#6366f1"))
     fig_b.add_hline(y=0, line_color="#e5e7eb")
     fig_b.update_layout(height=170, margin=dict(l=40,r=20,t=10,b=40),
@@ -696,7 +701,6 @@ with colL:
     st.plotly_chart(fig_b, use_container_width=True, theme=None)
 
     st.markdown('</div>', unsafe_allow_html=True)
-
 with colC:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown(
