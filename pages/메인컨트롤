@@ -7,20 +7,234 @@ import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 공통 사이드바 설정
-# ──────────────────────────────────────────────────────────────────────────────
-st.header("🕹️ 메인 컨트롤 / Live Cam / 지도")
+COL = {
+    "primary":  "#2563eb",
+    "title":    "#0f172a",
+    "success":  "#16a34a",
+    "warn":     "#f59e0b",
+    "danger":   "#dc2626",
+    "muted":    "#64748b",
+    "border":   "#e5e7eb",
+    "card":     "#ffffff",
+    "header":   "#f1f5f9",
+    "app_bg":   "#ffffff",
+    "hydrogen": "#0ea5e9",
+    "solar":    "#f59e0b",
+    "other":    "#e2e8f0",
+    "motor":    "#475569",
+    "teal":     "#14b8a6",
+    "sidebar_bg": "#f8fafc",
+}
 
-API_BASE = st.sidebar.text_input("제어 API 주소", "http://127.0.0.1:8000")
-mode = st.sidebar.radio("운항 모드", ["수동조작 모드", "자율운항 모드"])
 
-hz = st.sidebar.slider("전송 주기(Hz)", 5, 30, 10)
-timeout_s = st.sidebar.slider("요청 타임아웃(s)", 0.2, 3.0, 1.0, 0.1)
-send_zero_on_release = st.sidebar.checkbox("키에서 손 떼면 정지(0%) 전송", True)
+st.markdown(f"""
+<style>
+.card {{
+  background: {COL["card"]};
+  border: 1px solid {COL["border"]};
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 1px rgba(16,24,40,.02);
+}}
+.card-header {{
+  background: {COL["header"]};
+  border: 1px solid {COL["border"]};
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display:flex; justify-content:space-between; align-items:center;
+}}
+.card-title {{
+  font-weight: 800; letter-spacing: -.01em;
+  color: {COL["title"]}; font-size: 18px;
+}}
+.badge {{
+  padding: 4px 10px; border-radius: 999px; color: #fff;
+  font-weight: 700; font-size: 12px;
+}}            
 
-cam_mode = st.sidebar.selectbox("카메라 모드", ["데모(가상 영상)", "노트북 웹캠(브라우저)", "MJPEG 주소"])
-cam_url = st.sidebar.text_input("카메라 MJPEG URL", f"{API_BASE}/cam/mjpeg")
+</style>
+""", unsafe_allow_html=True)
+
+st.set_page_config(
+    page_title="메인 컨트롤",
+    page_icon="🕹️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+COL = {
+    "primary":  "#2563eb",
+    "title":    "#0f172a",
+    "success":  "#16a34a",
+    "warn":     "#f59e0b",
+    "danger":   "#dc2626",
+    "muted":    "#64748b",
+    "border":   "#e5e7eb",
+    "card":     "#ffffff",
+    "header":   "#f1f5f9",
+    "app_bg":   "#ffffff",
+    "hydrogen": "#0ea5e9",
+    "solar":    "#f59e0b",
+    "other":    "#e2e8f0",
+    "motor":    "#475569",
+    "teal":     "#14b8a6",
+    "sidebar_bg": "#f8fafc",
+}
+def custom_sidebar():
+    import os
+    st.markdown("""
+    <style>
+      [data-testid="stSidebarNav"] { display: none !important; }
+      section[data-testid="stSidebar"] {
+        background: #3E4A61 !important; color: #fff !important;
+      }
+      section[data-testid="stSidebar"] * { color:#fff !important; }
+      .sb-title { font-weight: 800; font-size: 20px; margin: 6px 0 8px 0; }
+      .sb-link [data-testid="stPageLink"] a{ color:#fff !important; text-decoration:none !important; }
+      .sb-link [data-testid="stPageLink"] a:hover{ background: rgba(255,255,255,0.12); border-radius: 6px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    def page_link_if_exists(candidates, label):
+        for p in candidates:
+            if os.path.exists(p):
+                st.sidebar.page_link(p, label=label)
+                return
+
+    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
+
+    # 🏠 엔트리포인트(홈)
+    page_link_if_exists(["Home.py"], "🏠 홈")
+
+    # 🧭 메인 컨트롤
+    page_link_if_exists([
+        "pages/1_1. 메인_컨트롤.py",
+        "pages/1_1.메인_컨트롤.py",
+    ], "🧭 메인 컨트롤")
+
+    # ⚡ 에너지 모니터링
+    page_link_if_exists([
+        "pages/2_2. 에너지_모니터링.py",
+        "pages/2_2.에너지_모니터링.py",
+    ], "⚡ 에너지 모니터링")
+
+    # ⚠️ 안전 경보
+    page_link_if_exists([
+        "pages/3_3. 안전 경보.py",
+        "pages/3_3.안전 경보.py",
+        "pages/3_3. 안전_경보.py",
+        "pages/3_3.안전_경보.py",
+    ], "⚠️ 안전 경보")
+
+    # 🌱 친환경 지표 (띄어쓰기/언더스코어 모두 대응)
+    page_link_if_exists([
+        "pages/4_4. 친환경 지표.py",
+        "pages/4_4.친환경 지표.py",
+        "pages/4_4. 친환경_지표.py",
+        "pages/4_4.친환경_지표.py",
+    ], "🌱 친환경 지표")
+
+    # 🔐 로그인 (공백/무공백 모두 대응)
+    page_link_if_exists([
+        "pages/5_5. 로그인.py",
+        "pages/5_5.로그인.py",
+    ], "🔐 로그인")
+
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
+
+
+def top_header():
+    # 레이아웃: [헤더(시계까지)] | [LOGIN]
+    left, right = st.columns([1, 0.13])  # 우측 폭은 필요시 0.12~0.16 사이로 조절
+
+    with left:
+        components.html(
+            """
+            <div id="topbar" style="
+                background:#3E4A61; color:white; padding:10px 20px;
+                display:flex; justify-content:space-between; align-items:center;
+                border-radius:8px; font-family:system-ui, -apple-system, Segoe UI, Roboto;">
+              <div style="font-size:18px; font-weight:700;">Eco-Friendship Dashboard</div>
+              <!-- 우측: 시계만 (여기서 헤더 끝) -->
+              <div style="font-size:14px;">
+                  <span id="clock"></span>
+              </div>
+            </div>
+            <script>
+              function updateClock(){
+                var n=new Date();
+                var h=String(n.getHours()).padStart(2,'0');
+                var m=String(n.getMinutes()).padStart(2,'0');
+                var s=String(n.getSeconds()).padStart(2,'0');
+                var el=document.getElementById('clock');
+                if(el) el.textContent=h+":"+m+":"+s;
+              }
+              updateClock();
+              setInterval(updateClock,1000);
+            </script>
+            """,
+            height=56,
+        )
+
+    with right:
+        # 헤더와 수직 정렬 맞춤 + 스타일 통일
+        st.markdown(
+            """
+            <style>
+              .login-right [data-testid="stPageLink"] a{
+                display:inline-block;
+                width:100%;
+                text-align:center;
+                color:white !important; font-weight:700; text-decoration:none !important;
+                background:#3E4A61; border:1px solid rgba(255,255,255,0.35);
+                height:56px; line-height:56px; border-radius:8px;
+              }
+              .login-right [data-testid="stPageLink"] a:hover{
+                background:#46526b; border-color:white;
+              }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown('<div class="login-right">', unsafe_allow_html=True)
+        if not st.session_state.get("logged_in", False):
+            st.page_link("pages/5_5. 로그인.py", label="LOGIN")
+        else:
+            if st.button("LOGOUT", use_container_width=True):
+                st.session_state["logged_in"] = False
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown(
+    "<div style='font-size:26px; font-weight:800; margin:10px 0 2px 0;'>"
+    "🕹️ 메인 컨트롤"
+    "</div>",
+    unsafe_allow_html=True
+    )
+# ── 컨트롤 값의 기본(state) 확보 ──────────────────────────────────────────────
+def _get(name, default):
+    if name not in st.session_state:
+        st.session_state[name] = default
+    return st.session_state[name]
+
+API_BASE = _get("api_input", "http://127.0.0.1:8000")
+mode = _get("mode", "수동조작 모드")
+hz = _get("hz", 10)
+timeout_s = _get("timeout_s", 1.0)
+send_zero_on_release = _get("send_zero_on_release", True)
+cam_mode = _get("cam_mode", "데모(가상 영상)")
+cam_url = _get("cam_url", f"{API_BASE}/cam/mjpeg")  # 최초 기본은 API_BASE 기반
+
+
+custom_sidebar()
+top_header()
+st.caption("원격으로 선박을 조종하며 Live Cam 과 지도를 이용해 실시간 위치를 파악하고 제어합니다.")
+
+
+
 
 # 수동조작 모드에서만 속도 슬라이더 노출(자율운항 모드도 지도 ETA 계산에는 사용)
 pwm = st.slider("속도(PWM%)", 0, 100, 40, key="pwm_slider")
@@ -443,3 +657,44 @@ with col_mid:
 
 with col_map:
     render_map()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 페이지 하단 컨트롤 패널 (상단 3열 아래, 맨 끝)
+# ──────────────────────────────────────────────────────────────────────────────
+
+with st.container():
+    st.markdown('<div class="card" style="height:100%;">', unsafe_allow_html=True)
+
+    st.markdown(
+            f'<div class="card-header"><div class="card-title">⚙️ 제어 설정</div></div>',
+            unsafe_allow_html=True,
+        )
+    # ▶ Row 1: API / 카메라 모드 / MJPEG URL (3열 고정폭 → 정렬 깔끔)
+    r1c1, r1c2, r1c3 = st.columns([0.34, 0.32, 0.34])
+    with r1c1:
+        st.text_input("제어 API 주소", st.session_state["api_input"], key="api_input")
+    with r1c2:
+        st.selectbox("카메라 모드", ["데모(가상 영상)", "노트북 웹캠(브라우저)", "MJPEG 주소"], key="cam_mode")
+    with r1c3:
+        # 사용자가 직접 수정한 적 없으면 API_BASE 변화에 맞춰 기본값 갱신
+        if "cam_url_user_touched" not in st.session_state:
+            st.session_state.cam_url = f'{st.session_state["api_input"]}/cam/mjpeg'
+        cam_changed = st.text_input("카메라 MJPEG URL", st.session_state["cam_url"], key="cam_url")
+        # 사용자가 직접 손댔는지 플래그
+        st.session_state.cam_url_user_touched = True
+
+    # ▶ Row 2: 운항 모드 / 전송주기 & 타임아웃 / 체크박스 (3열 동일폭 → 정렬 깔끔)
+    r2c1, r2c2, r2c3 = st.columns([0.34, 0.32, 0.34])
+    with r2c1:
+        st.radio("운항 모드", ["수동조작 모드", "자율운항 모드"], key="mode")
+    with r2c2:
+        c21, c22 = st.columns(2)
+        with c21:
+            st.slider("전송 주기(Hz)", 5, 30, st.session_state["hz"], key="hz")
+        with c22:
+            st.slider("요청 타임아웃(s)", 0.2, 3.0, st.session_state["timeout_s"], 0.1, key="timeout_s")
+    with r2c3:
+        st.checkbox("키에서 손 떼면 정지(0%) 전송", value=st.session_state["send_zero_on_release"], key="send_zero_on_release")
+
+    st.markdown('</div>', unsafe_allow_html=True)
