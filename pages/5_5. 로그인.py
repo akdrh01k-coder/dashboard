@@ -81,7 +81,7 @@ custom_sidebar()
 # -----------------------------
 if "users" not in st.session_state:
     st.session_state.users = {
-        "admin": {"password": "1234", "email": "admin@example.com", "is_active": True}
+        "정민교": {"password": "1234", "email": "admin@example.com", "is_active": True}
     }
 
 if "pw_reset" not in st.session_state:
@@ -158,7 +158,7 @@ def show_login_page():
     st.title("🔐 로그인")
 
     with st.form("login_form"):
-        username = st.text_input("사용자 이름", placeholder="admin")
+        username = st.text_input("사용자 이름", placeholder="이름")
         password = st.text_input("비밀번호", type="password", placeholder="••••")
 
         c1, c2, c3 = st.columns([1, 1, 1])
@@ -188,7 +188,7 @@ def show_login_page():
     st.markdown(
         "※ 본 로그인 화면은 **개발/테스트용 임시 페이지**입니다.\n"
         "관리자 접속 시 아래 샘플 계정을 사용하세요.\n\n"
-        "- 사용자 이름: `admin`\n"
+        "- 사용자 이름: `정민교`\n"
         "- 비밀번호: `1234`\n\n"
         "(추후 실제 서비스 시에는 변경될 수 있습니다.)"
     )
