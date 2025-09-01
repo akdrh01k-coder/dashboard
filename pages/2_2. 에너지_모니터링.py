@@ -251,7 +251,7 @@ MOTOR_PR   = 15.0                # 모터 정격(W)
 FC_PR      = 18.0                 # PEMFC 정격(W)
 PV_AREA    = 0.06                 # m^2
 PV_EFF     = 0.16                 # 효율
-PV_V       = 3.0                 # PV MPP 전압
+PV_V       = 6.0                 # PV MPP 전압
 T_LIMIT    = 70.0                 # 모터 온도 한계(℃)
 DT         = 2.0                  # 샘플 간격(s)
 
@@ -482,14 +482,34 @@ with left:
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-   # ===== 실시간 출력 추이 ===== 
+    # ===== 실시간 출력 추이 ===== 
+
+    # --- 그래프를 완만하게 만들기 위한 데이터 스무딩(이동 평균) ---
+    # window_size 값을 조절해 얼마나 부드럽게 만들지 결정할 수 있습니다.
+    # 값을 키울수록 그래프는 더 완만해집니다. (예: 5, 10, 20)
+    window_size = 10 
+
+    df['motor_w_smooth'] = df['motor_w'].rolling(window=window_size, min_periods=1).mean()
+    df['pv_w_smooth'] = df['pv_w'].rolling(window=window_size, min_periods=1).mean()
+    df['fc_w_smooth'] = df['fc_w'].rolling(window=window_size, min_periods=1).mean()
+
+
     fig = go.Figure()
-    fig.add_scatter(x=df["time"], y=df["motor_w"], name="모터", mode="lines", line=dict(width=2, color="#475569"))
-    fig.add_scatter(x=df["time"], y=df["pv_w"],    name="태양광", mode="lines", line=dict(width=2, color="#f59e0b"))
-    fig.add_scatter(x=df["time"], y=df["fc_w"],    name="연료전지", mode="lines", line=dict(width=2, color="#0ea5e9"))
+
+    # 1. 이동 평균을 적용한 '부드러운' 라인 (더 두껍게 표시)
+    fig.add_scatter(x=df["time"], y=df["motor_w_smooth"], name="모터 (추세)", mode="lines", line=dict(width=3, color="#475569"))
+    fig.add_scatter(x=df["time"], y=df["pv_w_smooth"],    name="태양광 (추세)", mode="lines", line=dict(width=3, color="#f59e0b"))
+    fig.add_scatter(x=df["time"], y=df["fc_w_smooth"],    name="연료전지 (추세)", mode="lines", line=dict(width=3, color="#0ea5e9"))
+
+    # 2. 기존의 '뾰족한' 원본 데이터 라인 (더 얇고 투명하게 표시)
+    fig.add_scatter(x=df["time"], y=df["motor_w"], name="모터 (원본)", mode="lines", line=dict(width=1, color="#475569"), opacity=0.3, showlegend=False)
+    fig.add_scatter(x=df["time"], y=df["pv_w"],    name="태양광 (원본)", mode="lines", line=dict(width=1, color="#f59e0b"), opacity=0.3, showlegend=False)
+    fig.add_scatter(x=df["time"], y=df["fc_w"],    name="연료전지 (원본)", mode="lines", line=dict(width=1, color="#0ea5e9"), opacity=0.3, showlegend=False)
+
+
     fig.update_layout(height=260, margin=dict(l=40,r=20,t=10,b=40),
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                      paper_bgcolor="white", plot_bgcolor="white")
+                          legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                          paper_bgcolor="white", plot_bgcolor="white")
     fig.update_yaxes(title="W", gridcolor="#e5e7eb")
     st.plotly_chart(fig, use_container_width=True, theme=None)
 
@@ -534,28 +554,31 @@ with right:
 
 
 # ---- 공통 파생값(지금 시점)
-pv_now   = float(df.iloc[-1]["pv_w"])
+pv_now_w   = float(df.iloc[-1]["pv_w"])
 fc_now   = float(df.iloc[-1]["fc_w"])
 motor_now= float(df.iloc[-1]["motor_w"])
-eco_share_now = float(np.clip((pv_now + fc_now) / max(1e-6, motor_now) * 100.0, 0, 100))
+eco_share_now = float(np.clip((pv_now_w + fc_now) / max(1e-6, motor_now) * 100.0, 0, 100))
 
 # 오늘(세션) 평균 PV (간단 러닝 평균)
 if "pv_day_date" not in st.session_state or st.session_state["pv_day_date"] != datetime.utcnow().date():
     st.session_state["pv_day_date"] = datetime.utcnow().date()
     st.session_state["pv_sum_w"] = 0.0
     st.session_state["pv_cnt"] = 0
-st.session_state["pv_sum_w"] += pv_now
+st.session_state["pv_sum_w"] += pv_now_w
 st.session_state["pv_cnt"]   += 1
 pv_avg_today = st.session_state["pv_sum_w"] / max(1, st.session_state["pv_cnt"])
 
 # 최적 효율(간단 휴리스틱): FC를 가능한 한 결손을 채우도록 올렸을 때의 eco 비중 기반
-fc_opt = min(FC_PR, max(0.0, motor_now - pv_now))                         # 결손을 FC가 최대한 메움
-eco_opt = float(np.clip((pv_now + fc_opt) / max(1e-6, motor_now) * 100.0, 0, 100))
+fc_opt = min(FC_PR, max(0.0, motor_now - pv_now_w))                         # 결손을 FC가 최대한 메움
+eco_opt = float(np.clip((pv_now_w + fc_opt) / max(1e-6, motor_now) * 100.0, 0, 100))
 # 효율 지수(데모): 60 + 0.35×친환경비중 - 고부하 페널티
 load_pct = float(np.clip(motor_now/MOTOR_PR*100.0, 0, 200))
 eff_now  = float(np.clip(60 + 0.35*eco_share_now - max(0, load_pct-85)*0.4, 0, 100))
 eff_opt  = float(np.clip(60 + 0.35*eco_opt       - max(0, load_pct-85)*0.4, 0, 100))
 eff_gain = eff_opt - eff_now   # 최적 전략 대비 이득
+pv_total_today_wh = (df['pv_w'].mean() * (len(df) / 3600.0))  # 대략적인 오늘 PV 총량(Wh)
+eff_opt = 95.0
+eff_gain = 0.0
 
 # =========================
 # 하단 3열: 좌(오늘의 태양광/친환경 예측) | 중(배터리) | 우(RER/ZER)
@@ -565,29 +588,60 @@ colL, colC, colR = st.columns([1.0, 0.6, 1.1], gap="small")
 with colR:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown(
-            f'<div class="card-header"><div class="card-title">☀️ 오늘의 태양광 발전량은 얼마?</div></div>',
+            f'<div class="card-header"><div class="card-title">☀️ 오늘의 태양광 발전 현황</div></div>',
             unsafe_allow_html=True,
         )
 
     # KPI 3개
     st.markdown(f"""
     <div class="kpis">
-      <div class="kpi"><div class="h">오늘 평균 발전량</div><div class="v">{pv_avg_today:.0f} W</div></div>
-      <div class="kpi"><div class="h">현재 친환경 비중</div><div class="v">{eco_share_now:.1f} %</div></div>
-      <div class="kpi"><div class="h">예상 최적 효율</div><div class="v">{eff_opt:.1f} / 100 <span class="badge-pill {'badge-green' if eff_gain>0 else 'badge-amber' if abs(eff_gain)<0.5 else 'badge-red' if eff_gain<0 else ''}">{eff_gain:+.1f}p</span></div></div>
+        <div class="kpi">
+            <div class="h">☀️ 실시간 발전 전력</div>
+            <div class="v">{pv_now_w:.1f} W</div>
+        </div>
+        <div class="kpi">
+            <div class="h">🔋 오늘 총 발전량</div>
+            <div class="v">{pv_total_today_wh:.1f} Wh</div>
+        </div>
+        <div class="kpi">
+            <div class="h">👍 현재 발전 효율</div>
+            <div class="v">{eff_opt:.1f} / 100 점
+                <span class="badge-pill {'badge-green' if eff_gain>0 else 'badge-amber' if abs(eff_gain)<0.5 else 'badge-red' if eff_gain<0 else ''}">{eff_gain:+.1f}p</span>
+            </div>
+            <div class="sub-h">최적 조건 대비 성능</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # PV 스파크라인 + eco 스파크라인(가볍게)
+   # --- 그래프를 완만하게 만들기 위한 데이터 스무딩(이동 평균) ---
+# window_size 값을 조절해 얼마나 부드럽게 만들지 결정할 수 있습니다.
+# 값을 키울수록 그래프는 더 완만해집니다. (예: 5, 10, 20)
+    window_size = 10 
+
+    # 'pv_w' 데이터에 대한 이동 평균 계산
+    df['pv_w_smooth'] = df['pv_w'].rolling(window=window_size, min_periods=1).mean()
+
+
+    # PV 스파크라인 (수정됨)
     fig_pv = go.Figure()
-    fig_pv.add_scatter(x=df["time"], y=df["pv_w"], mode="lines", name="PV", line=dict(width=2, color="#f59e0b"))
-    fig_pv.add_scatter(x=df["time"], y=(df["pv_w"]+df["fc_w"])/np.maximum(df["motor_w"],1e-6)*100.0,
-                       mode="lines", name="Eco%", yaxis="y2", line=dict(width=2, color="#10b981"))
-    fig_pv.update_layout(height=170, margin=dict(l=40,r=20,t=10,b=40),
-                         paper_bgcolor="white", plot_bgcolor="white",
-                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                         yaxis=dict(title="PV W", gridcolor="#e5e7eb"),
-                         yaxis2=dict(title="Eco %", overlaying='y', side='right', range=[0,100]))
+
+    # 1. 이동 평균을 적용한 '부드러운' 라인 (더 두껍게 표시)
+    fig_pv.add_scatter(x=df["time"], y=df["pv_w_smooth"], mode="lines", name="발전 전력 (추세)", 
+                      line=dict(width=3, color="#f59e0b"))
+
+    # 2. 기존의 '뾰족한' 원본 데이터 라인 (더 얇고 투명하게 표시)
+    fig_pv.add_scatter(x=df["time"], y=df["pv_w"], mode="lines", name="발전 전력 (원본)", 
+                      line=dict(width=1, color="#f59e0b"), opacity=0.3, showlegend=False)
+
+
+    fig_pv.update_layout(
+        height=170, 
+        margin=dict(l=50, r=20, t=10, b=40),
+        paper_bgcolor="white", 
+        plot_bgcolor="white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        yaxis=dict(title="발전 전력(W)", gridcolor="#e5e7eb", range=[0, df['pv_w'].max() * 1.2]),
+    )
     st.plotly_chart(fig_pv, use_container_width=True, theme=None)
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -606,7 +660,7 @@ with colL:
     if "batt_hist" not in st.session_state:
         st.session_state["batt_hist"] = pd.DataFrame(columns=["time","w","soc"])
 
-    batt_w = float(pv_now + fc_now - motor_now)  # +면 충전, -면 방전
+    batt_w = float(pv_now_w + fc_now - motor_now)  # +면 충전, -면 방전
     # SOC 적분
     st.session_state["batt_soc"] = float(np.clip(
         st.session_state["batt_soc"] + batt_w * DT / 3600.0 / BATT_CAP_WH, 0.05, 0.98
