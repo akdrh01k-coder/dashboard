@@ -8,6 +8,37 @@ import time
 from urllib import parse as _url
 from datetime import datetime, timedelta
 
+# === DB 연결 (파일 상단, import 아래) ===
+import os
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 에서 DB_URL 로드
+DB_URL = os.getenv("DB_URL")  # 예: mysql+pymysql://ship:비번@<DB서버IP>:3306/shipdb
+engine = create_engine(DB_URL, pool_pre_ping=True)
+
+def fetch_latest_power(source: str, seconds: int = 15, device_id: str | None = None):
+    """
+    generation_power에서 source( 'solar' | 'fuel_cell' )의 최근 seconds초 내 최신 1건을 dict로 반환.
+    없으면 None.
+    """
+    cond = "source = :src AND ts >= NOW(6) - INTERVAL :sec SECOND"
+    params = {"src": source, "sec": seconds}
+    if device_id:
+        cond += " AND device_id = :dev"
+        params["dev"] = device_id
+    sql = f"""
+        SELECT ts, device_id, voltage_v, current_a, power_w
+        FROM generation_power
+        WHERE {cond}
+        ORDER BY ts DESC
+        LIMIT 1
+    """
+    with engine.connect() as conn:
+        row = conn.execute(text(sql), params).mappings().first()
+        return dict(row) if row else None
+
+
 # ---------- 스타일 팔레트 (가장 먼저 선언) ----------
 COL = {
     "primary":  "#2563eb",
@@ -28,7 +59,36 @@ COL = {
     "sidebar_bg": "#f8fafc",
 }
 
+# ==== 세션 상태 안전 초기화 (최상단에 한 번만) ====
+import pandas as pd
+from datetime import datetime, timedelta
+import numpy as np
 
+if "micro_hist" not in st.session_state:
+    # 빈 프레임으로라도 만들어 두기 (컬럼은 사용 중인 이름과 동일하게)
+    st.session_state["micro_hist"] = pd.DataFrame(
+        columns=["time","motor_w","pv_w","fc_w","speed_ms","duty","motor_a","temp_c"]
+    )
+
+# ---- 이후 코드에서 사용 시 안전 가드 ----
+df = st.session_state["micro_hist"]
+if df.empty:
+    # 최초 1회용 더미 한 줄 정도 채워서 그래프/연산이 터지지 않게
+    now = datetime.utcnow()
+    st.session_state["micro_hist"] = pd.DataFrame([{
+        "time": now,
+        "motor_w": 0.0,
+        "pv_w": 0.0,
+        "fc_w": 0.0,
+        "speed_ms": 0.0,
+        "duty": 0.0,
+        "motor_a": 0.0,
+        "temp_c": 25.0,
+    }])
+    df = st.session_state["micro_hist"]
+
+# 기존 코드처럼 쓰려면:
+# df = st.session_state["micro_hist"].copy()
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
@@ -88,7 +148,7 @@ def custom_sidebar():
                 st.sidebar.page_link(p, label=label)
                 return
 
-    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sb-title">Eco-friendShip Dashboard</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
 
     # 🏠 엔트리포인트(홈)
@@ -183,7 +243,7 @@ def top_header():
                 background:#3E4A61; color:white; padding:10px 20px;
                 display:flex; justify-content:space-between; align-items:center;
                 border-radius:8px; font-family:system-ui, -apple-system, Segoe UI, Roboto;">
-              <div style="font-size:18px; font-weight:700;">Eco-Friendship Dashboard</div>
+              <div style="font-size:18px; font-weight:700;">Eco-friendShip Dashboard</div>
               <!-- 우측: 시계만 (여기서 헤더 끝) -->
               <div style="font-size:14px;">
                   <span id="clock"></span>
@@ -337,6 +397,60 @@ if "micro_hist" not in st.session_state:
         prev_fc = rows[-1][3] if rows else 40.0
         fc_w = float(np.clip(prev_fc + 0.12*(0.6*deficit - prev_fc) + np.random.normal(0, 1.5), 10, FC_PR))
 
+        # === [ADD] DB 값으로 시뮬 값 덮어쓰기 (있을 때만) ===
+        # 필요하면 장치 고정: solar -> device_id='arduinoA', fuel_cell -> device_id='arduinoB'
+        db_pv = fetch_latest_power("solar", seconds=30, device_id="arduinoA")
+        db_fc = fetch_latest_power("fuel_cell", seconds=30, device_id="arduinoB")
+
+        # 태양광
+        if db_pv and pd.notna(db_pv.get("power_w")):
+            pv_w = float(db_pv["power_w"])
+            # 전압/전류도 DB에 있으면 쓰기 (아래에서 표시용)
+            try:
+                PV_V = float(db_pv["voltage_v"]) if pd.notna(db_pv.get("voltage_v")) else PV_V
+            except Exception:
+                pass
+
+# === DB에서 최신 태양광/연료전지 값 읽기 (최근 15초 내) ===
+# 특정 보드로 한정하고 싶으면 device_id="arduinoA"/"arduinoB"를 넘기세요.
+db_pv = fetch_latest_power("solar", seconds=15)        # , device_id="arduinoA"
+db_fc = fetch_latest_power("fuel_cell", seconds=15)    # , device_id="arduinoB"
+
+# None 방지(안전 가드)
+if db_pv is None:
+    db_pv = {}
+if db_fc is None:
+    db_fc = {}
+
+# 파워 값 계산 (없으면 0.0)
+def _safe_float(x, default=0.0):
+    try:
+        return float(x)
+    except Exception:
+        return default
+
+pv_w = _safe_float(db_pv.get("power_w"), 0.0)
+fc_w = _safe_float(db_fc.get("power_w"), 0.0)
+
+# 전압/전류도 카드에 쓰려면
+pv_V = _safe_float(db_pv.get("voltage_v"), 0.0)
+pv_I = _safe_float(db_pv.get("current_a"), 0.0)
+fc_V = _safe_float(db_fc.get("voltage_v"), 0.0)
+fc_I = _safe_float(db_fc.get("current_a"), 0.0)
+
+# (기존 코드에서 pv_w, fc_w, pv_V, pv_I, fc_V, fc_I를 사용하는 부분이 있다면
+# 위 변수들로 자동 대체되어 작동합니다.)
+
+# 연료전지
+if db_fc and pd.notna(db_fc.get("power_w")):
+    fc_w = float(db_fc["power_w"])
+    try:
+        # 연료전지는 시스템 BUS_V를 쓰므로 전압 덮어쓸 필요는 보통 없음(원하면 아래 주석 해제)
+        # BUS_V = float(db_fc["voltage_v"]) if pd.notna(db_fc.get("voltage_v")) else BUS_V
+        pass
+    except Exception:
+        pass
+
         # 전류/온도
         i_motor = motor_w / BUS_V
         temp += (0.05*(motor_w/MOTOR_PR) - 0.025)*DT
@@ -385,10 +499,21 @@ t_now      = float(df.iloc[-1]["temp_c"])
 thermal_hd = float(T_LIMIT - t_now)
 state_cls  = "good" if load_pct<=60 else ("warn" if load_pct<=85 else "bad")
 
+# === [ADD] DB 전류값이 있으면 우선 사용 ===
+if db_pv and pd.notna(db_pv.get("current_a")):
+    pv_I_from_db = float(db_pv["current_a"])
+else:
+    pv_I_from_db = None
+
+if db_fc and pd.notna(db_fc.get("current_a")):
+    fc_I_from_db = float(db_fc["current_a"])
+else:
+    fc_I_from_db = None
+
 # 각 소스의 V/I 계산(전력만 있어도 표시)
 motor_V, motor_I = BUS_V, p_now/max(BUS_V,1e-6)
-pv_V,    pv_I    = PV_V,  float(pv_w/max(PV_V,1e-6))
-fc_V,    fc_I    = BUS_V, float(fc_w/max(BUS_V,1e-6))
+pv_V,    pv_I    = PV_V,  (pv_I_from_db if pv_I_from_db is not None else float(pv_w/max(PV_V,1e-6)))
+fc_V,    fc_I    = BUS_V, (fc_I_from_db if fc_I_from_db is not None else float(fc_w/max(BUS_V,1e-6)))
 
 # ================= 레이아웃: 상단 2열 =================
 left, right = st.columns([1.6, 1.1], gap="small")
