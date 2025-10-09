@@ -7,6 +7,44 @@ import numpy as np
 import time
 from datetime import datetime, timedelta
 
+# === [ADD] DB 연동: 최근 초음파 거리 가져오기 =======================
+import os
+import pandas as pd
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
+
+load_dotenv()
+DB_URL = os.getenv("DB_URL")
+engine = create_engine(DB_URL, pool_pre_ping=True) if DB_URL else None
+
+def fetch_ultra_distance(seconds: int = 10, device_id: str = "arduinoA"):
+    """
+    ultrasonic_readings에서 최근 N초 내 최신 1건을 가져와 (거리[m], ts) 반환.
+    없으면 None 반환.
+    """
+    if not engine:
+        return None
+    q = """
+    SELECT ts, device_id, distance_cm
+    FROM ultrasonic_readings
+    WHERE ts > NOW(6) - INTERVAL :sec SECOND
+      AND device_id = :dev
+    ORDER BY ts DESC
+    LIMIT 1
+    """
+    try:
+        with engine.begin() as conn:
+            df = pd.read_sql(text(q), conn, params={"sec": seconds, "dev": device_id})
+        if df.empty:
+            return None
+        r = df.iloc[0]
+        dist_m = float(r["distance_cm"]) / 100.0 if pd.notna(r["distance_cm"]) else None
+        return {"ts": pd.to_datetime(r["ts"]), "distance_m": dist_m}
+    except Exception as e:
+        st.sidebar.warning(f"초음파 DB 읽기 오류: {e}")
+        return None
+# ====================================================================
+
 # --- 페이지 기본 설정 ---
 st.set_page_config(
     page_title="안전/경보 대시보드",
@@ -37,7 +75,7 @@ def custom_sidebar():
                 st.sidebar.page_link(p, label=label)
                 return
 
-    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sb-title">Eco-friendShip Dashboard</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
 
     # 🏠 엔트리포인트(홈)
@@ -150,7 +188,7 @@ def top_header():
                 background:#3E4A61; color:white; padding:10px 20px;
                 display:flex; justify-content:space-between; align-items:center;
                 border-radius:8px; font-family:system-ui, -apple-system, Segoe UI, Roboto;">
-              <div style="font-size:18px; font-weight:700;">Eco-Friendship Dashboard</div>
+              <div style="font-size:18px; font-weight:700;">Eco-friendShip Dashboard</div>
               <!-- 우측: 시계만 (여기서 헤더 끝) -->
               <div style="font-size:14px;">
                   <span id="clock"></span>
@@ -290,21 +328,23 @@ def _push_alarm(alarms, key, name, severity, detail, condition: bool):
         st.session_state.alarm_last_ts[key] = datetime.now()
 
 # ------------------------------------------------------------
-# 더미: 6단계 데모 시나리오(5초 주기)
+# 6단계 시나리오(5초 주기)
 # ------------------------------------------------------------
 def read_latest(prev=None):
     now = datetime.now()
     phase = st.session_state.tick % 6
 
-    # 기본은 정상 범위
+    # 기본 더미 값(기존)
     lidar_min = 2.4 + np.random.normal(0, 0.15)
     cam_obstacle_center = False
     gps_speed = abs(0.55 + np.random.normal(0, 0.08))
     motor_i = abs(np.random.normal(1.6, 0.5))
     pi_temp = 55 + np.random.normal(0, 1.5)
-    link_age = np.random.uniform(0, 1.0)
 
-    # 단계별 시나리오
+    # ✅ link_age 완전 제거 (더 이상 지연 사용 안 함)
+    # link_age = np.random.uniform(0, 1.0)  # ← 삭제
+
+    # 단계별 시나리오(기존)
     if phase == 1:
         cam_obstacle_center = True
     elif phase == 2:
@@ -314,16 +354,25 @@ def read_latest(prev=None):
     elif phase == 4:
         motor_i = 6.8; pi_temp = 62 + np.random.normal(0, 1.5)
     elif phase == 5:
-        motor_i = 3.5; gps_speed = 0.02; link_age = np.random.uniform(0, 0.6)
+        motor_i = 3.5; gps_speed = 0.02
+
+    # === [ADD] 초음파 DB 값으로 거리 주입 (LiDAR 제목은 유지, 값만 초음파로) ===
+    ultra = fetch_ultra_distance(seconds=10, device_id="arduinoA")
+    if ultra and (ultra.get("distance_m") is not None):
+        lidar_min  = float(ultra["distance_m"])   # 카드1/규칙 에서 쓰는 최소거리
+        ultra_dist = float(ultra["distance_m"])   # 카드5(새 항목) 표시용
+    else:
+        ultra_dist = float(lidar_min)             # DB 없으면 더미값 유지
 
     return {
         "ts": now,
-        "lidar_min": lidar_min,
+        "lidar_min": lidar_min,                   # m
+        "ultra_dist": ultra_dist,                 # m (새 키)
         "cam_obstacle_center": cam_obstacle_center,
         "gps_speed": gps_speed,
         "motor_i": motor_i,
         "pi_temp": pi_temp,
-        "link_age": link_age,
+        # "link_age": link_age,                   # ← 삭제
     }
 
 def evaluate_rules(x):
@@ -346,11 +395,7 @@ def evaluate_rules(x):
     _push_alarm(alarms, "motor_i_warn", "모터 과전류", "경고",
                 f"{x['motor_i']:.1f}A > {THRESH['motor_i_warn']}A",
                 x["motor_i"] > THRESH["motor_i_warn"])
-    _push_alarm(alarms, "link_delay", "데이터 지연/끊김", "경고",
-                f"{x['link_age']:.1f} s > {THRESH['data_timeout_s']} s",
-                x["link_age"] > THRESH["data_timeout_s"])
     return alarms
-
 
 
 if "last_sample" not in st.session_state:
@@ -423,15 +468,22 @@ TH = THRESH
 c1, c2, c3, c4, c5 = st.columns(5)
 
 with c1:
+    # 제목은 요구대로 LiDAR 유지, 값은 초음파 거리(DB)
     stat_card("📡", "LiDAR 최소거리", f"{sample['lidar_min']:.2f} m")
+
 with c2:
     stat_card("🎥", "카메라 전방", "감지됨" if sample["cam_obstacle_center"] else "정상")
+
 with c3:
     stat_card("🚤", "선박 속도", f"{sample['gps_speed']:.2f} m/s")
+
 with c4:
     stat_card("⚙️", "모터 전류", f"{sample['motor_i']:.2f} A")
+
 with c5:
-    stat_card("📶", "데이터 지연", f"{sample['link_age']:.2f} s", title_tag=f"(임계 {TH['data_timeout_s']}s)")
+    # ⛳ 데이터 지연 카드를 초음파 거리로 변경 (제목도 명확히 표기)
+    stat_card("📡", "초음파 최소거리", f"{sample['lidar_min']:.2f} m",
+              title_tag=f"(경고 {TH['lidar_min_warn']} m, 위험 {TH['lidar_min_crit']} m)")
 
 # ------------------------------------------------------------
 # 좌/우 레이아웃: 상태 배너 & 현재 경보 테이블
