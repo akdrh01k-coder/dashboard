@@ -8,6 +8,41 @@ from datetime import datetime
 import time
 from urllib import parse as _url
 
+# === DB 연동 공통 (generation_power에서 최신 전력 읽기) ==========
+import os
+import pandas as pd  # 이미 import 되어 있어도 무방
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 에서 DB_URL 로드
+DB_URL = os.getenv("DB_URL")  # 예) mysql+pymysql://ship_view:비번@<DB_IP>:3306/shipdb
+engine = create_engine(DB_URL, pool_pre_ping=True) if DB_URL else None
+
+def fetch_latest_power(src: str, seconds: int = 10):
+    """
+    generation_power에서 최근 N초 내 source=src 의 최신 전력(W) 읽어 반환.
+    없으면 None 반환. (src: 'solar' | 'fuel_cell')
+    """
+    if not engine:
+        return None
+    q = """
+    SELECT ts, power_w
+    FROM generation_power
+    WHERE source = :src
+      AND ts > NOW(6) - INTERVAL :sec SECOND
+    ORDER BY ts DESC
+    LIMIT 1
+    """
+    try:
+        with engine.begin() as conn:
+            df = pd.read_sql(text(q), conn, params={"src": src, "sec": seconds})
+        if df.empty or pd.isna(df.iloc[0]["power_w"]):
+            return None
+        return float(df.iloc[0]["power_w"])
+    except Exception as e:
+        st.sidebar.warning(f"DB 읽기 오류({src}): {e}")
+        return None
+# ==============================================================
 
 st.set_page_config(page_title="친환경 지표", layout="wide")
 
@@ -291,9 +326,6 @@ CONFIG = {
     "EF_PV": 0.0,
 }
 
-
-
-st.caption("운영·분석용 데모 · 5초 자동 갱신")
 st.markdown("---")
 
 # ---------- 세션 ----------
@@ -312,7 +344,7 @@ if "ref_samples" not in st.session_state:
     st.session_state["ref_samples"] = []
 
 
-# ---------- 더미 데이터 ----------
+# ---------- 더미 데이터 (폴백 기본값) ----------
 motor_w = float(np.random.uniform(18, 25))
 eco_share = float(np.random.uniform(0.8, 0.985))
 eco_total = motor_w * eco_share
@@ -320,6 +352,21 @@ fc_w = eco_total * float(np.random.uniform(0.4, 0.6))
 pv_w = eco_total - fc_w
 other_w = 0.0
 batt_w = 0.0
+
+# ---------- [ADD] DB 연동: 최근 전력으로 덮어쓰기 ----------
+pv_db  = fetch_latest_power("solar", seconds=10)
+fc_db  = fetch_latest_power("fuel_cell", seconds=10)
+
+if pv_db is not None:
+    pv_w = max(0.0, float(pv_db))
+if fc_db is not None:
+    fc_w = max(0.0, float(fc_db))
+
+# (옵션) 친환경 총합이 모터보다 크면 살짝 캡핑
+if pv_w + fc_w > motor_w * 1.2:  # 과한 흔들림 방지용 가드
+    scale = (motor_w * 1.2) / max(1e-6, (pv_w + fc_w))
+    pv_w *= scale
+    fc_w *= scale
 
 # ---------- 속도(데모) ----------
 ship_speed = float(np.random.uniform(0.6, 1.6))  # m/s
@@ -476,10 +523,10 @@ with c2:
         pv_pct = pv_w / motor_w * 100.0
 
         fig_mix = go.Figure()
-        fig_mix.add_trace(go.Bar(name="수소 연료전지", x=["공급원"], y=[fc_w],
+        fig_mix.add_trace(go.Bar(name="수소 연료전지", x=["친환경 에너지"], y=[fc_w],
                                  marker_color=COL["hydrogen"],
                                  text=[f"{fc_w:.0f}W ({fc_pct:.1f}%)"], textposition="inside"))
-        fig_mix.add_trace(go.Bar(name="태양광", x=["공급원"], y=[pv_w],
+        fig_mix.add_trace(go.Bar(name="태양광", x=["친환경 에너지"], y=[pv_w],
                                  marker_color=COL["solar"],
                                  text=[f"{pv_w:.0f}W ({pv_pct:.1f}%)"], textposition="inside"))
         fig_mix.add_trace(go.Bar(name="모터 부하", x=["모터"], y=[motor_w],
@@ -599,11 +646,11 @@ with c2:
 
 
     
-    # 우: 탄소 배출 절감률 (G.E.R)
+    # 우: 그린 배출 감축량 (G.E.R, Green Emission Reduction)
     with right:
         st.markdown('<div class="card" style="height:100%;">', unsafe_allow_html=True)
         st.markdown(
-            f'<div class="card-header"><div class="card-title">🌍 탄소 배출 절감률 (G.E.R)</div></div>',
+            f'<div class="card-header"><div class="card-title">🌍 그린 배출 감축량 (G.E.R)</div></div>',
             unsafe_allow_html=True,
         )
 
@@ -651,7 +698,7 @@ with c2:
         )
         st.plotly_chart(fig_co2_comp, use_container_width=True, theme=None)
 
-        with st.expander("탄소 배출 절감률(G.E.R) 계산식 보기"):
+        with st.expander("그린 배출 감축량 (G.E.R) 계산식 보기"):
             st.latex(r'''
             G.E.R (\%) = \frac{CE_{Diesel} - CE_{Eco}}{CE_{Diesel}} \times 100
             ''')
