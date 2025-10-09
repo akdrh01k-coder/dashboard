@@ -31,6 +31,12 @@ COL = {
     "sidebar_bg": "#f8fafc",
 }
 
+st.set_page_config(
+    page_title="친환경 지표",
+    page_icon="🌱",
+    layout="wide",
+)
+
 # ---------- 전역 CSS ----------
 st.markdown(f"""
 <style>
@@ -87,18 +93,6 @@ div[data-testid="stSidebarNav"] a[aria-current="page"] {{
 [data-testid="stMetricValue"] {{ font-weight: 800; color: {COL["title"]}; }}
 [data-testid="stMetricDelta"] {{ font-weight: 700; }}
 
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-.big-num { 
-  font-size: 40px;      /* 더 크게 */
-  font-weight: 900;     /* 더 굵게 */
-  letter-spacing: -0.01em;
-  margin: 2px 0 6px 2px;
-  color: #0f172a;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -276,38 +270,13 @@ def top_header():
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
-    "<div style='font-size:26px; font-weight:800; margin:-10px 0 2px 0;'>"
+    "<div style='font-size:26px; font-weight:800; margin:10px 0 2px 0;'>"
     "🌱 친환경 지표"
     "</div>",
     unsafe_allow_html=True
     )
 
 top_header()
-st.caption("재생에너지 비중과 효율 지수를 기반으로 친환경 운항 상태를 평가합니다.")
-st.markdown("""
-<style>
-/* 페이지 큰 제목은 이미 custom div로 작게 여백 설정됨. 아래는 소제목(=subheader)만 축소 */
-h2, .stMarkdown h2 {
-  font-size: 20px !important;      /* 소제목을 페이지 제목보다 작게 */
-  margin-top: 8px !important;
-  margin-bottom: 6px !important;
-  line-height: 1.25 !important;
-}
-/* 기본 구분선 여백 줄이기 */
-hr { margin: 4px 0 !important; }
-/* 테이블(데이터프레임) 셀 패딩 살짝 축소 */
-[data-testid="stDataFrame"] .st-emotion-cache-1xarl3l,  /* header cell */
-[data-testid="stDataFrame"] .st-emotion-cache-1y4p8pa {  /* body cell */
-  padding-top: 6px !important;
-  padding-bottom: 6px !important;
-}
-/* expander 안쪽 문단 여백 축소 */
-[data-testid="stExpander"] p { margin: 4px 0 !important; }
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("---")
-
 custom_sidebar()
 
 # ========== 친환경 지표 설정 ==========
@@ -322,29 +291,35 @@ CONFIG = {
     "EF_PV": 0.0,
 }
 
+
+
+st.caption("운영·분석용 데모 · 5초 자동 갱신")
+st.markdown("---")
+
 # ---------- 세션 ----------
 if "history" not in st.session_state:
     st.session_state["history"] = pd.DataFrame(
         columns=[
-            "time","motor_w","fc_w","pv_w","batt_w","other_w",
-            "eff_index","eco_ratio","V_score",
-            "co2_saved_g","co2_cum_t","ship_speed",
-            "co2_diesel_g","co2_actual_g","co2_diesel_cum_t","co2_actual_cum_t"
+             "time","motor_w","fc_w","pv_w","batt_w","other_w",
+             "eff_index","eco_ratio","V_score",
+             "co2_saved_g","co2_cum_kg","ship_speed", # co2_cum_t -> co2_cum_kg
+             "co2_diesel_g","co2_actual_g","co2_diesel_cum_kg","co2_actual_cum_kg" # _t -> _kg
         ]
-    )
-if "saved_co2_t" not in st.session_state:
+)
+if "saved_co2_t" not in st.session_state: # 누적 tCO2
     st.session_state["saved_co2_t"] = 0.0
 if "ref_samples" not in st.session_state:
     st.session_state["ref_samples"] = []
 
+
 # ---------- 더미 데이터 ----------
-motor_w = float(np.random.uniform(90, 180))
-eco_share = float(np.random.uniform(0.35, 0.80))
+motor_w = float(np.random.uniform(18, 25))
+eco_share = float(np.random.uniform(0.8, 0.985))
 eco_total = motor_w * eco_share
-fc_w = eco_total * np.random.uniform(0.3, 0.7)
+fc_w = eco_total * float(np.random.uniform(0.4, 0.6))
 pv_w = eco_total - fc_w
-other_w = max(0.0, motor_w - (fc_w + pv_w))
-batt_w = float(min(other_w, np.random.uniform(10, 60)))  # 기록용
+other_w = 0.0
+batt_w = 0.0
 
 # ---------- 속도(데모) ----------
 ship_speed = float(np.random.uniform(0.6, 1.6))  # m/s
@@ -377,9 +352,9 @@ co2_actual_g = E_kWh * (EFd * diesel_share + EFfc * fc_share + EFpv * pv_share)
 co2_saved_g = max(0.0, co2_diesel_only_g - co2_actual_g)
 
 # 누적 (tCO2)
-prev_cum_t = float(st.session_state.get("saved_co2_t", 0.0))
-co2_cum_t = float(prev_cum_t + co2_saved_g/1_000_000.0)
-st.session_state["saved_co2_t"] = co2_cum_t
+prev_cum_kg = float(st.session_state.get("saved_co2_kg", 0.0))
+co2_cum_kg = float(prev_cum_kg + co2_saved_g/1000.0)
+st.session_state["saved_co2_kg"] = co2_cum_kg
 
 # 기록
 now = pd.Timestamp.utcnow()
@@ -387,9 +362,9 @@ new_row = {
     "time":now,
     "motor_w":motor_w,"fc_w":fc_w,"pv_w":pv_w,"batt_w":batt_w,"other_w":other_w,
     "eff_index":eff_index,"eco_ratio":eco_ratio,"V_score":V_score,
-    "co2_saved_g":co2_saved_g,"co2_cum_t":co2_cum_t,"ship_speed":ship_speed,
+    "co2_saved_g":co2_saved_g,"co2_cum_kg":co2_cum_kg,"ship_speed":ship_speed,
     "co2_diesel_g":co2_diesel_only_g,"co2_actual_g":co2_actual_g,
-    "co2_diesel_cum_t":np.nan,"co2_actual_cum_t":np.nan
+    "co2_diesel_cum_kg":np.nan,"co2_actual_cum_kg":np.nan
 }
 st.session_state["history"] = pd.concat(
     [st.session_state["history"], pd.DataFrame([new_row])],
@@ -399,8 +374,8 @@ st.session_state["history"] = pd.concat(
 # 누적 라인 계산
 hist = st.session_state["history"].copy()
 if not hist.empty:
-    hist["co2_diesel_cum_t"] = (hist["co2_diesel_g"].fillna(0).cumsum())/1_000_000.0
-    hist["co2_actual_cum_t"] = (hist["co2_actual_g"].fillna(0).cumsum())/1_000_000.0
+    hist["co2_diesel_cum_kg"] = (hist["co2_diesel_g"].fillna(0).cumsum())/1_000_000.0
+    hist["co2_actual_cum_kg"] = (hist["co2_actual_g"].fillna(0).cumsum())/1_000_000.0
 
 # 등급
 def grade_by_eff(idx: float):
@@ -494,12 +469,11 @@ with c2:
         st.markdown('<div class="card" style="height:100%;">', unsafe_allow_html=True)
         st.markdown(
             f'<div class="card-header"><div class="card-title">🌱 친환경 에너지 비중</div>'
-            f'<span class="badge" style="background:{COL["teal"]};">{eco_ratio:.1f}%</span></div>',
+            f'<span class="badge" style="background:{COL["success"]};">100%</span></div>',
             unsafe_allow_html=True,
         )
         fc_pct = fc_w / motor_w * 100.0
         pv_pct = pv_w / motor_w * 100.0
-        other_pct = other_w / motor_w * 100.0
 
         fig_mix = go.Figure()
         fig_mix.add_trace(go.Bar(name="수소 연료전지", x=["공급원"], y=[fc_w],
@@ -508,85 +482,188 @@ with c2:
         fig_mix.add_trace(go.Bar(name="태양광", x=["공급원"], y=[pv_w],
                                  marker_color=COL["solar"],
                                  text=[f"{pv_w:.0f}W ({pv_pct:.1f}%)"], textposition="inside"))
-        fig_mix.add_trace(go.Bar(name="보충", x=["공급원"], y=[other_w],
-                                 marker_color=COL["other"],
-                                 text=[f"{other_w:.0f}W ({other_pct:.1f}%)"], textposition="inside"))
         fig_mix.add_trace(go.Bar(name="모터 부하", x=["모터"], y=[motor_w],
                                  marker_color=COL["motor"],
                                  text=[f"{motor_w:.0f}W (100%)"], textposition="inside"))
 
         fig_mix.update_layout(
-            barmode="relative", height=260,
-            margin=dict(t=20, b=20, l=56, r=20),
+            barmode="stack", height=320,
+            margin=dict(t=20, b=10, l=56, r=20),
             yaxis=dict(title="출력 (W)", title_standoff=12, automargin=True, gridcolor=COL["border"]),
             paper_bgcolor="white", plot_bgcolor="white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         st.plotly_chart(fig_mix, use_container_width=True, theme=None)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # ====== 친환경 비중 아래의 수소/태양광 비중 블럭 교체 코드 ======
+        st.markdown(f"""
+        <style>
+        /* 컨테이너 */
+        .eco-cards {{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 8px;
+        }}
 
-    # 우: CO2 절감량 + 그린 운항 시간 비율
+        /* 카드 공통 */
+        .eco-card {{
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 6px 20px rgba(15,23,42,0.06);
+        color: white;
+        min-height: 88px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        }}
+
+        /* 왼쪽 아이콘 / 오른쪽 내용 레이아웃 */
+        .eco-icon {{
+        width: 56px; height:56px; border-radius:10px;
+        display:flex; align-items:center; justify-content:center;
+        font-size:40px; flex-shrink:0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }}
+        .eco-body {{ flex:1; }}
+
+        /* 큰 숫자 */
+        .eco-percent {{
+        font-size:30px; font-weight:900; line-height:1; margin-bottom:4px;
+        }}
+        .eco-label {{ font-size:12px; opacity:0.92; }}
+
+        /* 진행 바 배경 */
+        .progress-bg {{
+        width:100%; height:10px; border-radius:8px; overflow:hidden;
+        background: rgba(255,255,255,0.12); margin-top:8px;
+        }}
+
+        /* 채워진 바 (각각 너비를 inline style로 지정) */
+        .progress-fill {{
+        height:100%; border-radius:8px 8px 8px 8px;
+        box-shadow: inset 0 -4px 8px rgba(0,0,0,0.08);
+        }}
+
+        .hydrogen-bg {{ background: linear-gradient(135deg, {COL['hydrogen']}, #0b93d6); }}
+        .solar-bg {{ background: linear-gradient(135deg, #f59e0b, #fbbf24); }}
+
+        .hydrogen-fill {{ background: linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)); }}
+        .solar-fill {{ background: linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)); }}
+
+        /* 반응형: 작은 화면이면 세로 정렬 */
+        @media (max-width:720px) {{
+        .eco-cards {{ grid-template-columns: 1fr; }}
+        .eco-icon {{ width:48px; height:48px; font-size:18px; }}
+        .eco-percent {{ font-size:20px; }}
+        }}
+        </style>
+
+        <div class="eco-cards">
+        <!-- 수소 카드 -->
+        <div class="eco-card hydrogen-bg" role="group" aria-label="수소 비중">
+            <div class="eco-icon" style="background:rgba(255,255,255,0.06);">
+            ⛽
+            </div>
+            <div class="eco-body">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                <div class="eco-percent">{fc_pct:.1f}%</div>
+                <div class="eco-label">수소 연료전지</div>
+                </div>
+            </div>
+            <div class="progress-bg" aria-hidden="true">
+                <div class="progress-fill hydrogen-fill" style="width: {fc_pct:.1f}%; background: linear-gradient(90deg, rgba(255,255,255,0.28), rgba(255,255,255,0.06));"></div>
+            </div>
+            </div>
+        </div>
+
+        <!-- 태양광 카드 -->
+        <div class="eco-card solar-bg" role="group" aria-label="태양광 비중">
+            <div class="eco-icon" style="background:rgba(255,255,255,0.06);">
+            ☀️
+            </div>
+            <div class="eco-body">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                <div class="eco-percent">{pv_pct:.1f}%</div>
+                <div class="eco-label">태양광</div>
+                </div>
+            </div>
+            <div class="progress-bg" aria-hidden="true">
+                <div class="progress-fill solar-fill" style="width: {pv_pct:.1f}%; background: linear-gradient(90deg, rgba(255,255,255,0.28), rgba(255,255,255,0.06));"></div>
+            </div>
+            </div>
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+    
+    # 우: 탄소 배출 절감률 (G.E.R)
     with right:
         st.markdown('<div class="card" style="height:100%;">', unsafe_allow_html=True)
-
         st.markdown(
-            f'<div class="card-header"><div class="card-title">🌍 CO₂ 절감량</div></div>',
+            f'<div class="card-header"><div class="card-title">🌍 탄소 배출 절감률 (G.E.R)</div></div>',
             unsafe_allow_html=True,
         )
-        st.markdown(f"<div class='big-num'>{co2_saved_g:.2f} g</div>", unsafe_allow_html=True)
+
+        # 누적 배출량 계산
+        diesel_cum_kg = 0.0
+        actual_cum_kg = 0.0
+        reduction_rate = 0.0
+        
         if not hist.empty:
-            st.caption(f"누적 절감: {hist['co2_diesel_cum_t'].iloc[-1] - hist['co2_actual_cum_t'].iloc[-1]:,.3f} tCO₂")
-        else:
-            st.caption("누적 절감: 0.000 tCO₂")
-        with st.expander("이산화탄소 절감량 계산식"):
-            st.markdown(
-                """
-                - **E** = (모터전력 × 5초) / 3,600,000 → kWh  
-                - **실제배출** = E × [ EF<sub>diesel</sub>×(1−(FC+PV)비중) + EF<sub>FC</sub>×FC비중 + EF<sub>PV</sub>×PV비중 ]  
-                - **디젤기준배출** = E × EF<sub>diesel</sub>  
-                - **절감량** = 디젤기준배출 − 실제배출 (gCO₂)  
-                *기본값: EF<sub>diesel</sub>=720 gCO₂/kWh, EF<sub>FC</sub>=0, EF<sub>PV</sub>=0 (운항단계)*
-                """,
-                unsafe_allow_html=True
-            )
+            diesel_cum_kg = hist['co2_diesel_cum_kg'].iloc[-1]
+            actual_cum_kg = hist['co2_actual_cum_kg'].iloc[-1]
+            if diesel_cum_kg > 0:
+                # G.E.R 계산식 적용
+                reduction_rate = (diesel_cum_kg - actual_cum_kg) / diesel_cum_kg * 100.0
 
-        st.markdown(
-            f'<div class="card-header" style="margin-top:8px;"><div class="card-title">🟢 그린 운항 시간비율</div></div>',
-            unsafe_allow_html=True,
+        # 메인 지표 표시 (st.metric 사용)
+        st.metric(
+            label="디젤 선박 대비 누적 절감률",
+            value=f"{reduction_rate:.1f} %",
+            delta=f"실 배출량: {actual_cum_kg:,.4f} tCO₂",
+            delta_color="inverse"
         )
 
-        # 5분 주기 샘플 × 12 = 최근 1시간
-        win = 12
-        eco_tail = hist["eco_ratio"].astype(float).tail(win) if not hist.empty else pd.Series([eco_ratio])
-        green_ratio = (eco_tail >= 60).mean() * 100.0
-
-        st.markdown(f"<div class='big-num'>{green_ratio:.1f} %</div>", unsafe_allow_html=True)
-
-        # 라인 그래프 (축 눈금 표시)
-        mini = go.Figure()
-        if not eco_tail.empty:
-            mini.add_scatter(
-                x=list(range(len(eco_tail))), y=eco_tail.values,
-                mode="lines", name="재생 비중(%)", line=dict(width=2)
+        # 배출량 비교 그래프
+        co2_df = hist.tail(240)
+        fig_co2_comp = go.Figure()
+        if not co2_df.empty:
+            fig_co2_comp.add_scatter(
+                x=co2_df["time"], y=co2_df["co2_diesel_cum_kg"],
+                mode="lines", name="디젤 기준",
+                line=dict(width=2, color="#9ca3af", dash="dash")
             )
-            mini.add_hline(y=60, line_width=1, line_dash="dot")
-
-        mini.update_layout(
-            height=110,
-            margin=dict(l=40, r=30, t=4, b=40),
-            yaxis=dict(title="", showticklabels=True, gridcolor=COL["border"]),
-            xaxis=dict(title="", showticklabels=True),
-            paper_bgcolor="white", plot_bgcolor="white", showlegend=False
+            fig_co2_comp.add_scatter(
+                x=co2_df["time"], y=co2_df["co2_actual_cum_kg"],
+                mode="lines", name="하이브리드",
+                line=dict(width=2.5, color=COL["success"])
+            )
+        
+        fig_co2_comp.update_layout(
+            height=205,
+            margin=dict(l=40, r=10, t=10, b=30),
+            yaxis=dict(title="누적 배출량 (kgCO₂)", gridcolor=COL["border"]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            paper_bgcolor="white", plot_bgcolor="white"
         )
-        st.plotly_chart(mini, use_container_width=True, theme=None)
+        st.plotly_chart(fig_co2_comp, use_container_width=True, theme=None)
 
-        with st.expander("그린 운항 시간 비율 계산식"):
+        with st.expander("탄소 배출 절감률(G.E.R) 계산식 보기"):
+            st.latex(r'''
+            G.E.R (\%) = \frac{CE_{Diesel} - CE_{Eco}}{CE_{Diesel}} \times 100
+            ''')
             st.markdown(
-                """ 
-                - **eco_ratio** = (연료전지+태양광) / 모터소비전력 × 100  
-                - **그린 운항 시간비율(%)** = ( eco_ratio ≥ 60% 인 샘플 수 / 전체 샘플 수 ) × 100
                 """
+                - $CE_{Diesel}$: 디젤 선박의 누적 탄소 배출량 (tCO₂)
+                - $CE_{Eco}$: 하이브리드 선박의 누적 탄소 배출량 (tCO₂)
+                
+                *<small>본 지표는 논문에 제시된 '그린 배출 감축량(Green Emission Reduction)'을 기반으로 합니다.</small>*
+                """, unsafe_allow_html=True
             )
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
 # 하단: 비교 그래프 2개 (카드+헤더 포함)
@@ -632,24 +709,24 @@ with g_right:
     fig_co2 = go.Figure()
     if not co2_df.empty:
         fig_co2.add_scatter(
-            x=co2_df["time"], y=co2_df["co2_diesel_cum_t"],
-            mode="lines", name="Diesel baseline (누적 tCO₂)",
+            x=co2_df["time"], y=co2_df["co2_diesel_cum_kg"],
+            mode="lines", name="Diesel baseline (누적 kgCO₂)",
             line=dict(width=2, color="#9ca3af")
         )
         fig_co2.add_scatter(
-            x=co2_df["time"], y=co2_df["co2_actual_cum_t"],
-            mode="lines", name="Eco-friendShip (누적 tCO₂)",
+            x=co2_df["time"], y=co2_df["co2_actual_cum_kg"],
+            mode="lines", name="Eco-friendShip (누적 kgCO₂)",
             line=dict(width=2, color=COL["success"])
         )
         fig_co2.add_scatter(
             x=pd.concat([co2_df["time"], co2_df["time"][::-1]]),
-            y=pd.concat([co2_df["co2_diesel_cum_t"], co2_df["co2_actual_cum_t"][::-1]]),
+            y=pd.concat([co2_df["co2_diesel_cum_kg"], co2_df["co2_actual_cum_kg"][::-1]]),
             fill="toself", fillcolor="rgba(37,99,235,0.08)", line=dict(color="rgba(0,0,0,0)"),
             name="절감 영역"
         )
     fig_co2.update_layout(
         height=240, margin=dict(l=40, r=30, t=10, b=40),
-        yaxis=dict(title="누적 배출량 (tCO₂)", gridcolor=COL["border"]),
+        yaxis=dict(title="누적 배출량 (kgCO₂)", gridcolor=COL["border"]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         paper_bgcolor="white", plot_bgcolor="white"
     )
