@@ -41,6 +41,12 @@ def custom_sidebar():
         "pages/1_1.메인_컨트롤.py",
     ], "🧭 메인 컨트롤")
 
+    # 🛰️ 위치 모니터링 LiDAR
+    page_link_if_exists([
+        "pages/1_2. 위치_모니터링_LiDAR.py",
+        "pages/1_2.위치_모니터링_LiDAR.py",
+    ], "🛰️ 위치 모니터링 LiDAR")
+    
     # ⚡ 에너지 모니터링
     page_link_if_exists([
         "pages/2_2. 에너지_모니터링.py",
@@ -71,9 +77,7 @@ def custom_sidebar():
 
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-
 custom_sidebar()
-
 
 
 LOGIN_PAGE = "pages/5_5. 로그인.py"
@@ -284,7 +288,6 @@ cam_mode = _get("cam_mode", "데모(가상 영상)")
 cam_url = _get("cam_url", f"{API_BASE}/cam/mjpeg")  # 최초 기본은 API_BASE 기반
 
 
-custom_sidebar()
 top_header()
 st.caption("원격으로 선박을 조종하며 Live Cam 과 지도를 이용해 실시간 위치를 파악하고 제어합니다.")
 
@@ -388,9 +391,10 @@ def render_big_controller(offset_px: int, api_base: str, pwm_val: int, hz_val: i
         if (!st.up && !st.down && !st.left && !st.right){{ clearInterval(timer); timer=null; }}
       }}
       function start(){{ if (!timer) timer=setInterval(tick, INTERVAL); }}
+      
       function stopAll(){{
         st.up=st.left=st.right=st.down=false; paint();
-        sendThrottle(0);
+        post('/cmd/emergency_brake', {{}});
         if (timer){{ clearInterval(timer); timer=null; }}
       }}
 
@@ -539,7 +543,7 @@ def render_map():
     try:
         from streamlit_folium import st_folium
         import folium
-    except Exception:
+    except ImportError:
         st.warning("지도 기능: pip install streamlit-folium folium 설치 필요")
         return
 
