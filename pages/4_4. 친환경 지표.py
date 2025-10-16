@@ -166,6 +166,12 @@ def custom_sidebar():
         "pages/1_1.메인_컨트롤.py",
     ], "🧭 메인 컨트롤")
 
+    # 🛰️ 위치 모니터링 LiDAR
+    page_link_if_exists([
+        "pages/1_2. 위치_모니터링_LiDAR.py",
+        "pages/1_2.위치_모니터링_LiDAR.py",
+    ], "🛰️ 위치 모니터링 LiDAR")
+    
     # ⚡ 에너지 모니터링
     page_link_if_exists([
         "pages/2_2. 에너지_모니터링.py",
@@ -196,48 +202,7 @@ def custom_sidebar():
 
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("""
-    <style>
-      /* 기본 사이드바 내비 숨김 (커스텀 링크 사용) */
-      [data-testid="stSidebarNav"] { display: none !important; }
-
-      /* 사이드바 배경/텍스트를 헤더와 통일 (div/section 모두 호환) */
-      section[data-testid="stSidebar"], div[data-testid="stSidebar"] {
-        background: #3E4A61 !important;
-        color: #fff !important;
-      }
-      section[data-testid="stSidebar"] *, div[data-testid="stSidebar"] * {
-        color: #fff !important;
-      }
-
-      /* 파일 상단 전역 CSS에서 넣었던 테두리/그림자 무력화 */
-      [data-testid="stSidebar"] > div:first-child {
-        background: transparent !important;
-        border-right: none !important;
-        box-shadow: none !important;
-      }
-
-      /* 제목 스타일 */
-      .sb-title {
-        font-weight: 800;
-        font-size: 20px;
-        margin: 6px 0 8px 0;
-      }
-
-      /* 링크 색/호버만 맞춤 */
-      .sb-link [data-testid="stPageLink"] a{
-        color:#fff !important;
-        text-decoration:none !important;
-        display:block;
-        padding:6px 8px;
-        border-radius:6px;
-      }
-      .sb-link [data-testid="stPageLink"] a:hover{
-        background: rgba(255,255,255,0.12);
-      }
-    </style>
-    """, unsafe_allow_html=True)
-
+custom_sidebar()
 
 # =========================
 #  상단 헤더바 + 제목 (메인과 통일)
@@ -312,7 +277,6 @@ def top_header():
     )
 
 top_header()
-custom_sidebar()
 
 # ========== 친환경 지표 설정 ==========
 CONFIG = {
