@@ -8,37 +8,6 @@ import time
 from urllib import parse as _url
 from datetime import datetime, timedelta
 
-# === DB 연결 (파일 상단, import 아래) ===
-import os
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
-
-load_dotenv()  # .env 에서 DB_URL 로드
-DB_URL = os.getenv("DB_URL")  # 예: mysql+pymysql://ship:비번@<DB서버IP>:3306/shipdb
-engine = create_engine(DB_URL, pool_pre_ping=True)
-
-def fetch_latest_power(source: str, seconds: int = 15, device_id: str | None = None):
-    """
-    generation_power에서 source( 'solar' | 'fuel_cell' )의 최근 seconds초 내 최신 1건을 dict로 반환.
-    없으면 None.
-    """
-    cond = "source = :src AND ts >= NOW(6) - INTERVAL :sec SECOND"
-    params = {"src": source, "sec": seconds}
-    if device_id:
-        cond += " AND device_id = :dev"
-        params["dev"] = device_id
-    sql = f"""
-        SELECT ts, device_id, voltage_v, current_a, power_w
-        FROM generation_power
-        WHERE {cond}
-        ORDER BY ts DESC
-        LIMIT 1
-    """
-    with engine.connect() as conn:
-        row = conn.execute(text(sql), params).mappings().first()
-        return dict(row) if row else None
-
-
 # ---------- 스타일 팔레트 (가장 먼저 선언) ----------
 COL = {
     "primary":  "#2563eb",
@@ -58,37 +27,6 @@ COL = {
     "teal":     "#14b8a6",
     "sidebar_bg": "#f8fafc",
 }
-
-# ==== 세션 상태 안전 초기화 (최상단에 한 번만) ====
-import pandas as pd
-from datetime import datetime, timedelta
-import numpy as np
-
-if "micro_hist" not in st.session_state:
-    # 빈 프레임으로라도 만들어 두기 (컬럼은 사용 중인 이름과 동일하게)
-    st.session_state["micro_hist"] = pd.DataFrame(
-        columns=["time","motor_w","pv_w","fc_w","speed_ms","duty","motor_a","temp_c"]
-    )
-
-# ---- 이후 코드에서 사용 시 안전 가드 ----
-df = st.session_state["micro_hist"]
-if df.empty:
-    # 최초 1회용 더미 한 줄 정도 채워서 그래프/연산이 터지지 않게
-    now = datetime.utcnow()
-    st.session_state["micro_hist"] = pd.DataFrame([{
-        "time": now,
-        "motor_w": 0.0,
-        "pv_w": 0.0,
-        "fc_w": 0.0,
-        "speed_ms": 0.0,
-        "duty": 0.0,
-        "motor_a": 0.0,
-        "temp_c": 25.0,
-    }])
-    df = st.session_state["micro_hist"]
-
-# 기존 코드처럼 쓰려면:
-# df = st.session_state["micro_hist"].copy()
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
@@ -121,7 +59,7 @@ st.markdown(f"""
 .badge {{
   padding: 4px 10px; border-radius: 999px; color: #fff;
   font-weight: 700; font-size: 12px;
-}}            
+}}
 
 </style>
 """, unsafe_allow_html=True)
@@ -148,7 +86,7 @@ def custom_sidebar():
                 st.sidebar.page_link(p, label=label)
                 return
 
-    st.sidebar.markdown('<div class="sb-title">Eco-friendShip Dashboard</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
 
     # 🏠 엔트리포인트(홈)
@@ -160,6 +98,12 @@ def custom_sidebar():
         "pages/1_1.메인_컨트롤.py",
     ], "🧭 메인 컨트롤")
 
+    # 🛰️ 위치 모니터링 LiDAR
+    page_link_if_exists([
+        "pages/1_2. 위치_모니터링_LiDAR.py",
+        "pages/1_2.위치_모니터링_LiDAR.py",
+    ], "🛰️ 위치 모니터링 LiDAR")
+    
     # ⚡ 에너지 모니터링
     page_link_if_exists([
         "pages/2_2. 에너지_모니터링.py",
@@ -190,47 +134,8 @@ def custom_sidebar():
 
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("""
-    <style>
-      /* 기본 사이드바 내비 숨김 (커스텀 링크 사용) */
-      [data-testid="stSidebarNav"] { display: none !important; }
+custom_sidebar()
 
-      /* 사이드바 배경/텍스트를 헤더와 통일 (div/section 모두 호환) */
-      section[data-testid="stSidebar"], div[data-testid="stSidebar"] {
-        background: #3E4A61 !important;
-        color: #fff !important;
-      }
-      section[data-testid="stSidebar"] *, div[data-testid="stSidebar"] * {
-        color: #fff !important;
-      }
-
-      /* 파일 상단 전역 CSS에서 넣었던 테두리/그림자 무력화 */
-      [data-testid="stSidebar"] > div:first-child {
-        background: transparent !important;
-        border-right: none !important;
-        box-shadow: none !important;
-      }
-
-      /* 제목 스타일 */
-      .sb-title {
-        font-weight: 800;
-        font-size: 20px;
-        margin: 6px 0 8px 0;
-      }
-
-      /* 링크 색/호버만 맞춤 */
-      .sb-link [data-testid="stPageLink"] a{
-        color:#fff !important;
-        text-decoration:none !important;
-        display:block;
-        padding:6px 8px;
-        border-radius:6px;
-      }
-      .sb-link [data-testid="stPageLink"] a:hover{
-        background: rgba(255,255,255,0.12);
-      }
-    </style>
-    """, unsafe_allow_html=True)
 
 def top_header():
     # 레이아웃: [헤더(시계까지)] | [LOGIN]
@@ -243,23 +148,22 @@ def top_header():
                 background:#3E4A61; color:white; padding:10px 20px;
                 display:flex; justify-content:space-between; align-items:center;
                 border-radius:8px; font-family:system-ui, -apple-system, Segoe UI, Roboto;">
-              <div style="font-size:18px; font-weight:700;">Eco-friendShip Dashboard</div>
-              <!-- 우측: 시계만 (여기서 헤더 끝) -->
-              <div style="font-size:14px;">
-                  <span id="clock"></span>
-              </div>
+                <div style="font-size:18px; font-weight:700;">Eco-Friendship Dashboard</div>
+                <div style="font-size:14px;">
+                    <span id="clock"></span>
+                </div>
             </div>
             <script>
-              function updateClock(){
-                var n=new Date();
-                var h=String(n.getHours()).padStart(2,'0');
-                var m=String(n.getMinutes()).padStart(2,'0');
-                var s=String(n.getSeconds()).padStart(2,'0');
-                var el=document.getElementById('clock');
-                if(el) el.textContent=h+":"+m+":"+s;
-              }
-              updateClock();
-              setInterval(updateClock,1000);
+                function updateClock(){
+                    var n=new Date();
+                    var h=String(n.getHours()).padStart(2,'0');
+                    var m=String(n.getMinutes()).padStart(2,'0');
+                    var s=String(n.getSeconds()).padStart(2,'0');
+                    var el=document.getElementById('clock');
+                    if(el) el.textContent=h+":"+m+":"+s;
+                }
+                updateClock();
+                setInterval(updateClock,1000);
             </script>
             """,
             height=56,
@@ -270,17 +174,17 @@ def top_header():
         st.markdown(
             """
             <style>
-              .login-right [data-testid="stPageLink"] a{
-                display:inline-block;
-                width:100%;
-                text-align:center;
-                color:white !important; font-weight:700; text-decoration:none !important;
-                background:#3E4A61; border:1px solid rgba(255,255,255,0.35);
-                height:56px; line-height:56px; border-radius:8px;
-              }
-              .login-right [data-testid="stPageLink"] a:hover{
-                background:#46526b; border-color:white;
-              }
+                .login-right [data-testid="stPageLink"] a{
+                    display:inline-block;
+                    width:100%;
+                    text-align:center;
+                    color:white !important; font-weight:700; text-decoration:none !important;
+                    background:#3E4A61; border:1px solid rgba(255,255,255,0.35);
+                    height:56px; line-height:56px; border-radius:8px;
+                }
+                .login-right [data-testid="stPageLink"] a:hover{
+                    background:#46526b; border-color:white;
+                }
             </style>
             """,
             unsafe_allow_html=True
@@ -301,24 +205,23 @@ def top_header():
     unsafe_allow_html=True
     )
 
-custom_sidebar()
 top_header()
 st.caption("실시간으로 에너지 사용량을 모니터링하고 분석합니다.")
 
 # ---------- 시뮬레이터 파라미터(초소형 보트) ----------
-BUS_V      = 12.0                 # 시스템 버스 전압(모터/FC)
-MOTOR_PR   = 15.0                # 모터 정격(W)
-FC_PR      = 18.0                 # PEMFC 정격(W)
-PV_AREA    = 0.06                 # m^2
-PV_EFF     = 0.16                 # 효율
-PV_V       = 6.0                 # PV MPP 전압
-T_LIMIT    = 70.0                 # 모터 온도 한계(℃)
-DT         = 2.0                  # 샘플 간격(s)
+BUS_V      = 12.0      # 시스템 버스 전압(모터/FC)
+MOTOR_PR   = 4.0       # 모터 정격(W)
+FC_PR      = 5.0       # PEMFC 정격(W)
+PV_AREA    = 0.06      # m^2
+PV_EFF     = 0.16      # 효율
+PV_V       = 6.0       # PV MPP 전압
+T_LIMIT    = 70.0      # 모터 온도 한계(℃)
+DT         = 2.0       # 샘플 간격(s)
 
-# 외부 일사량(없으면 700으로)
-w = st.session_state.get("weather", {"irradiance":700})
-IRR = float(w.get("irradiance", 700.0))  # W/m^2
-PV_MAX = PV_AREA * PV_EFF * IRR          # 이론치 (상한 걸어줌)
+# ⭐️ [수정됨] 외부 일사량 기본값을 700 -> 500으로 낮춰 태양광 출력을 줄임
+w = st.session_state.get("weather", {"irradiance":300})
+IRR = float(w.get("irradiance", 300.0))
+PV_MAX = PV_AREA * PV_EFF * IRR          # 이론치 (상한)
 
 # ---------- 스타일 ----------
 st.markdown("""
@@ -341,7 +244,7 @@ st.markdown("""
 .src-sub{font-size:12px;color:#64748b;font-weight:700}
 
 .src-center{display:flex; align-items:flex-end; gap:6px; flex-direction:column}
-.src-main{font-weight:900;font-size:18px;color:#0b3b66; letter-spacing:-0.2px}
+.src-main{font-weight:900;font-size:18px;color:#0b3b66; letter-spacing:--0.2px}
 .src-meter{height:6px;width:120px;border-radius:999px;background:#f1f5f9;overflow:hidden}
 .src-meter>span{display:block;height:100%}
 .mtr-motor{background:#94a3b8}.mtr-pv{background:#fbbf24}.mtr-fc{background:#38bdf8}
@@ -350,17 +253,17 @@ st.markdown("""
 .up{color:#16a34a}.down{color:#dc2626}.flat{color:#94a3b8}
 .blink{animation:flash .9s ease-out 1}
 @keyframes flash{0%{box-shadow:0 0 0 0 rgba(59,130,246,.28)}100%{box-shadow:0 0 0 10px rgba(59,130,246,0)}}
-            
+
 .badge{padding:6px 10px;border-radius:999px;font-weight:800;font-size:12px;border:1px solid rgba(0,0,0,.06)}
 .good{background:#e6f7ea;color:#0b6b2d}.warn{background:#fff7e0;color:#b36b00}.bad{background:#fdecea;color:#b91c1c}
-            
+
 .pills{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
 
 .pill{
   display:flex;align-items:center;gap:8px;
   padding:8px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;
 }
-            
+
 .kpis{display:grid;grid-template-columns: 1fr 1fr;gap:10px;flex-wrap:wrap;margin:6px 0}
 .kpi{background:#fff;border:1px solid #e8eef8;border-radius:12px;padding:8px 12px}
 .kpi .h{font-size:12px;color:#64748b;font-weight:700}
@@ -369,87 +272,34 @@ st.markdown("""
             border:1px solid rgba(0,0,0,.06); background:#f1f5f9; color:#334155}
 .badge-green{background:#dcfce7;color:#166534;border-color:#bbf7d0}
 .badge-amber{background:#fff7e0;color:#b45309;border-color:#fde68a}
-.badge-red{background:#fee2e2;color:#b91c1c;border-color:#fecaca}            
+.badge-red{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------- 히스토리 초기화(2초 간격, 2분치) ----------
 if "micro_hist" not in st.session_state:
     t0 = datetime.utcnow() - timedelta(seconds=110)
-    duty = 0.45
-    speed = 0.9      # m/s (≈ 1.75 kn)
+    # ⭐️ [수정됨] duty 초기값을 높여서 모터 출력을 3.5W 근처에서 시작
+    duty = 0.95
+    speed = 1.4
     temp  = 40.0
     rows = []
     for i in range(55):
-        # 스로틀(랜덤워크, 사용자 조작 느낌)
-        duty = float(np.clip(duty + np.random.normal(0, 0.015), 0.10, 0.95))
+        # ⭐️ [수정됨] duty(스로틀)가 0.9 ~ 1.0 사이에서 움직이도록 조정
+        duty = float(np.clip(duty + np.random.normal(0, 0.015), 0.90, 1.0))
         # 속도 1차 시스템: 목표 v_max=1.5 m/s, duty에 비례
         v_target = 1.5 * duty
         speed += (v_target - speed)*0.15 + np.random.normal(0, 0.01)
-        speed = float(np.clip(speed, 0.35, 1.55))  # 초소형 범위
+        speed = float(np.clip(speed, 0.35, 1.55))
 
-        # 모터 전력 ~ v^3 (유체저항) + 노이즈
-        motor_w = float(np.clip(MOTOR_PR * (speed/1.5)**3 + np.random.normal(0, 3), 8, MOTOR_PR*1.05))
-        # PV 전력: irr 기반 (소형 패널)
-        pv_w = float(np.clip(PV_AREA*PV_EFF*IRR + np.random.normal(0, 4), 0, min(PV_MAX, 60)))
-        # FC 전력: 수요의 일부를 느리게 추종(PI 성격)
-        deficit = max(0.0, motor_w - pv_w)              # 부족분
-        prev_fc = rows[-1][3] if rows else 40.0
-        fc_w = float(np.clip(prev_fc + 0.12*(0.6*deficit - prev_fc) + np.random.normal(0, 1.5), 10, FC_PR))
-
-        # === [ADD] DB 값으로 시뮬 값 덮어쓰기 (있을 때만) ===
-        # 필요하면 장치 고정: solar -> device_id='arduinoA', fuel_cell -> device_id='arduinoB'
-        db_pv = fetch_latest_power("solar", seconds=30, device_id="arduinoA")
-        db_fc = fetch_latest_power("fuel_cell", seconds=30, device_id="arduinoB")
-
-        # 태양광
-        if db_pv and pd.notna(db_pv.get("power_w")):
-            pv_w = float(db_pv["power_w"])
-            # 전압/전류도 DB에 있으면 쓰기 (아래에서 표시용)
-            try:
-                PV_V = float(db_pv["voltage_v"]) if pd.notna(db_pv.get("voltage_v")) else PV_V
-            except Exception:
-                pass
-
-# === DB에서 최신 태양광/연료전지 값 읽기 (최근 15초 내) ===
-# 특정 보드로 한정하고 싶으면 device_id="arduinoA"/"arduinoB"를 넘기세요.
-db_pv = fetch_latest_power("solar", seconds=15)        # , device_id="arduinoA"
-db_fc = fetch_latest_power("fuel_cell", seconds=15)    # , device_id="arduinoB"
-
-# None 방지(안전 가드)
-if db_pv is None:
-    db_pv = {}
-if db_fc is None:
-    db_fc = {}
-
-# 파워 값 계산 (없으면 0.0)
-def _safe_float(x, default=0.0):
-    try:
-        return float(x)
-    except Exception:
-        return default
-
-pv_w = _safe_float(db_pv.get("power_w"), 0.0)
-fc_w = _safe_float(db_fc.get("power_w"), 0.0)
-
-# 전압/전류도 카드에 쓰려면
-pv_V = _safe_float(db_pv.get("voltage_v"), 0.0)
-pv_I = _safe_float(db_pv.get("current_a"), 0.0)
-fc_V = _safe_float(db_fc.get("voltage_v"), 0.0)
-fc_I = _safe_float(db_fc.get("current_a"), 0.0)
-
-# (기존 코드에서 pv_w, fc_w, pv_V, pv_I, fc_V, fc_I를 사용하는 부분이 있다면
-# 위 변수들로 자동 대체되어 작동합니다.)
-
-# 연료전지
-if db_fc and pd.notna(db_fc.get("power_w")):
-    fc_w = float(db_fc["power_w"])
-    try:
-        # 연료전지는 시스템 BUS_V를 쓰므로 전압 덮어쓸 필요는 보통 없음(원하면 아래 주석 해제)
-        # BUS_V = float(db_fc["voltage_v"]) if pd.notna(db_fc.get("voltage_v")) else BUS_V
-        pass
-    except Exception:
-        pass
+        # [수정] 모터 전력: 노이즈를 줄여 안정화
+        motor_w = float(np.clip(MOTOR_PR * (speed/1.5)**3 + np.random.normal(0, 0.15), 0.5, MOTOR_PR*1.05))
+        # [수정] PV 전력: 노이즈를 줄여 안정화
+        pv_w = float(np.clip(PV_AREA*PV_EFF*IRR + np.random.normal(0, 0.2), 0, PV_MAX))
+        # [수정] FC 전력: 수요 부족분(deficit)을 느리게 추종, 최소 0W, 노이즈 0.1W 수준
+        deficit = max(0.0, motor_w - pv_w)
+        prev_fc = rows[-1][3] if rows else 0.0
+        fc_w = float(np.clip(prev_fc + 0.12*(0.8*deficit - prev_fc) + np.random.normal(0, 0.1), 0, FC_PR))
 
         # 전류/온도
         i_motor = motor_w / BUS_V
@@ -464,15 +314,17 @@ if db_fc and pd.notna(db_fc.get("power_w")):
 # ---------- 한 스텝 갱신 ----------
 df = st.session_state["micro_hist"].copy()
 last = df.iloc[-1]
-duty  = float(np.clip(last["duty"] + np.random.normal(0, 0.02), 0.10, 0.95))
+# ⭐️ [수정됨] duty(스로틀)가 0.9 ~ 1.0 사이에서 움직이도록 조정 (초기화 로직과 동일)
+duty  = float(np.clip(last["duty"] + np.random.normal(0, 0.015), 0.90, 1.0))
 v_tgt = 1.5 * duty
 speed = float(np.clip(last["speed_ms"] + (v_tgt - last["speed_ms"])*0.18 + np.random.normal(0, 0.012), 0.35, 1.60))
 
-motor_w = float(np.clip(MOTOR_PR * (speed/1.5)**3 + np.random.normal(0, 4), 8, MOTOR_PR*1.08))
-pv_w    = float(np.clip(PV_AREA*PV_EFF*IRR + np.random.normal(0, 5), 0, min(PV_MAX, 60)))
+# [수정] 모터, PV, FC 전력 생성 로직을 초기화 부분과 동일하게 조정
+motor_w = float(np.clip(MOTOR_PR * (speed/1.5)**3 + np.random.normal(0, 0.15), 0.5, MOTOR_PR*1.08))
+pv_w    = float(np.clip(PV_AREA*PV_EFF*IRR + np.random.normal(0, 0.25), 0, PV_MAX))
 deficit = max(0.0, motor_w - pv_w)
 fc_prev = float(last["fc_w"])
-fc_w    = float(np.clip(fc_prev + 0.15*(0.6*deficit - fc_prev) + np.random.normal(0, 1.8), 10, FC_PR))
+fc_w    = float(np.clip(fc_prev + 0.15*(0.8*deficit - fc_prev) + np.random.normal(0, 0.15), 0, FC_PR))
 
 i_motor = motor_w / BUS_V
 temp    = float(np.clip(last["temp_c"] + (0.06*(motor_w/MOTOR_PR) - 0.03)*DT, 28, 80))
@@ -499,21 +351,10 @@ t_now      = float(df.iloc[-1]["temp_c"])
 thermal_hd = float(T_LIMIT - t_now)
 state_cls  = "good" if load_pct<=60 else ("warn" if load_pct<=85 else "bad")
 
-# === [ADD] DB 전류값이 있으면 우선 사용 ===
-if db_pv and pd.notna(db_pv.get("current_a")):
-    pv_I_from_db = float(db_pv["current_a"])
-else:
-    pv_I_from_db = None
-
-if db_fc and pd.notna(db_fc.get("current_a")):
-    fc_I_from_db = float(db_fc["current_a"])
-else:
-    fc_I_from_db = None
-
 # 각 소스의 V/I 계산(전력만 있어도 표시)
 motor_V, motor_I = BUS_V, p_now/max(BUS_V,1e-6)
-pv_V,    pv_I    = PV_V,  (pv_I_from_db if pv_I_from_db is not None else float(pv_w/max(PV_V,1e-6)))
-fc_V,    fc_I    = BUS_V, (fc_I_from_db if fc_I_from_db is not None else float(fc_w/max(BUS_V,1e-6)))
+pv_V,    pv_I    = PV_V,  float(pv_w/max(PV_V,1e-6))
+fc_V,    fc_I    = BUS_V, float(fc_w/max(BUS_V,1e-6))
 
 # ================= 레이아웃: 상단 2열 =================
 left, right = st.columns([1.6, 1.1], gap="small")
@@ -521,25 +362,20 @@ left, right = st.columns([1.6, 1.1], gap="small")
 # ---- 좌: 실시간 출력 (모터/태양광/연료전지) + P/V/I 칩 ----
 with left:
     st.markdown('<div class="card" style="height:100%;">', unsafe_allow_html=True)
-
     st.markdown(
             f'<div class="card-header"><div class="card-title">📉 실시간 출력 데이터</div></div>',
             unsafe_allow_html=True,
         )
-
-
-
     # ===== P/V/I 칩 =====
-    # ===== NEW: 색상 카드 3개 (모터/태양광/연료전지) =====
-    pv_cap   = float(min(PV_MAX, 60.0)) if 'PV_MAX' in locals() else 60.0
+    pv_cap   = float(PV_MAX) if 'PV_MAX' in locals() else 7.0
     motor_prev = float(df.iloc[-2]["motor_w"]) if len(df)>=2 else float(df.iloc[-1]["motor_w"])
     pv_prev    = float(df.iloc[-2]["pv_w"])    if len(df)>=2 else float(df.iloc[-1]["pv_w"])
     fc_prev    = float(df.iloc[-2]["fc_w"])    if len(df)>=2 else float(df.iloc[-1]["fc_w"])
 
     def delta_fmt(cur, prev):
         d = cur - prev
-        if abs(d) < 0.5: return "flat", "— 0 W"
-        return ("up" if d>0 else "down", f"{'▲' if d>0 else '▼'} {d:+.0f} W")
+        if abs(d) < 0.1: return "flat", "— 0 W"
+        return ("up" if d>0 else "down", f"{'▲' if d>0 else '▼'} {d:+.1f} W")
 
     m_class, m_delta = delta_fmt(p_now, motor_prev)
     p_class, p_delta = delta_fmt(pv_w,  pv_prev)
@@ -562,7 +398,7 @@ with left:
         </div>
       </div>
       <div class="src-center">
-        <div class="src-main">{p_now:.0f} W</div>
+        <div class="src-main">{p_now:.1f} W</div>
         <div class="src-meter"><span class="mtr-motor" style="width:{motor_pct:.0f}%"></span></div>
       </div>
       <div class="src-delta {m_class}">{m_delta}</div>
@@ -580,7 +416,7 @@ with left:
         </div>
       </div>
       <div class="src-center">
-        <div class="src-main">{pv_w:.0f} W</div>
+        <div class="src-main">{pv_w:.1f} W</div>
         <div class="src-meter"><span class="mtr-pv" style="width:{pv_pct:.0f}%"></span></div>
       </div>
       <div class="src-delta {p_class}">{p_delta}</div>
@@ -598,7 +434,7 @@ with left:
         </div>
       </div>
       <div class="src-center">
-        <div class="src-main">{fc_w:.0f} W</div>
+        <div class="src-main">{fc_w:.1f} W</div>
         <div class="src-meter"><span class="mtr-fc" style="width:{fc_pct:.0f}%"></span></div>
       </div>
       <div class="src-delta {f_class}">{f_delta}</div>
@@ -607,74 +443,68 @@ with left:
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ===== 실시간 출력 추이 ===== 
-
-    # --- 그래프를 완만하게 만들기 위한 데이터 스무딩(이동 평균) ---
-    # window_size 값을 조절해 얼마나 부드럽게 만들지 결정할 수 있습니다.
-    # 값을 키울수록 그래프는 더 완만해집니다. (예: 5, 10, 20)
-    window_size = 10 
-
+    # ===== 실시간 출력 추이 =====
+    window_size = 5
     df['motor_w_smooth'] = df['motor_w'].rolling(window=window_size, min_periods=1).mean()
     df['pv_w_smooth'] = df['pv_w'].rolling(window=window_size, min_periods=1).mean()
     df['fc_w_smooth'] = df['fc_w'].rolling(window=window_size, min_periods=1).mean()
 
-
     fig = go.Figure()
+    fig.add_scatter(x=df["time"], y=df["motor_w_smooth"], name="모터", mode="lines", line=dict(width=2.5, color=COL["motor"]))
+    fig.add_scatter(x=df["time"], y=df["pv_w_smooth"],    name="태양광", mode="lines", line=dict(width=2.5, color=COL["solar"]))
+    fig.add_scatter(x=df["time"], y=df["fc_w_smooth"],    name="연료전지", mode="lines", line=dict(width=2.5, color=COL["hydrogen"]))
 
-    # 1. 이동 평균을 적용한 '부드러운' 라인 (더 두껍게 표시)
-    fig.add_scatter(x=df["time"], y=df["motor_w_smooth"], name="모터 (추세)", mode="lines", line=dict(width=3, color="#475569"))
-    fig.add_scatter(x=df["time"], y=df["pv_w_smooth"],    name="태양광 (추세)", mode="lines", line=dict(width=3, color="#f59e0b"))
-    fig.add_scatter(x=df["time"], y=df["fc_w_smooth"],    name="연료전지 (추세)", mode="lines", line=dict(width=3, color="#0ea5e9"))
-
-    # 2. 기존의 '뾰족한' 원본 데이터 라인 (더 얇고 투명하게 표시)
-    fig.add_scatter(x=df["time"], y=df["motor_w"], name="모터 (원본)", mode="lines", line=dict(width=1, color="#475569"), opacity=0.3, showlegend=False)
-    fig.add_scatter(x=df["time"], y=df["pv_w"],    name="태양광 (원본)", mode="lines", line=dict(width=1, color="#f59e0b"), opacity=0.3, showlegend=False)
-    fig.add_scatter(x=df["time"], y=df["fc_w"],    name="연료전지 (원본)", mode="lines", line=dict(width=1, color="#0ea5e9"), opacity=0.3, showlegend=False)
-
+    max_val = max(df['motor_w'].max(), df['pv_w'].max(), 8) # 최소 8W의 범위를 갖도록
+    fig.update_yaxes(range=[0, max_val * 1.1])
 
     fig.update_layout(height=260, margin=dict(l=40,r=20,t=10,b=40),
                           legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                           paper_bgcolor="white", plot_bgcolor="white")
     fig.update_yaxes(title="W", gridcolor="#e5e7eb")
     st.plotly_chart(fig, use_container_width=True, theme=None)
-
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ---- 우: 반원형(half-gauge) 부하율 + 속도/추세/온도/전류 칩 ----
 with right:
     st.markdown('<div class="card" style="height:100%;">', unsafe_allow_html=True)
-
     st.markdown(
             f'<div class="card-header"><div class="card-title">🛠️ 모터 부하율 및 상태 분석</div></div>',
             unsafe_allow_html=True,
         )
-
     # 반원 게이지 (Indicator)
     gauge = go.Figure(go.Indicator(
         mode="gauge+number",
         value=load_pct,
-        number={"suffix":" %","font":{"size":18, "color":"#0b3b66"}},
+        number={"suffix":" %","font":{"size":24, "color":"#0b3b66"}},
         gauge={
-            "axis":{"range":[0,100]},
-            "bar":{"color":"#3b82f6","thickness":0.28},
+            "axis":{"range":[0,100], "tickwidth": 1, "tickcolor": "darkblue"},
+            "bar":{"color":COL["primary"],"thickness":0.3},
+            "bgcolor": "white",
+            "borderwidth": 2,
+            "bordercolor": "#e5e7eb",
             "steps":[
-                {"range":[0,60],  "color":"#dcfce7"},
-                {"range":[60,85], "color":"#ffedd5"},
-                {"range":[85,100],"color":"#fee2e2"},
+                {"range":[0,60],  "color": "#f0fdf4"},
+                {"range":[60,85], "color": "#fefce8"},
+                {"range":[85,100],"color": "#fef2f2"},
             ],
         },
         domain={"x":[0,1], "y":[0,1]}
     ))
-    gauge.update_layout(height=170, margin=dict(l=20,r=20,t=10,b=0),
-                        paper_bgcolor="white", plot_bgcolor="white")
+    gauge.update_layout(height=170, margin=dict(l=20,r=20,t=20,b=10),
+                          paper_bgcolor="white", plot_bgcolor="white")
     st.plotly_chart(gauge, use_container_width=True, theme=None)
 
     # 핵심 KPI 칩
-    st.markdown('<div class="pills">', unsafe_allow_html=True)
-    st.markdown(f'<span class="badge {state_cls}">부하 {load_pct:.0f}%</span>', unsafe_allow_html=True)
-    st.markdown(f'<div class="pill"><span class="k">속도</span><span class="v">{speed_ms:.2f} m/s ({speed_kn:.2f} kn)</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="pill"><span class="k">여유</span><span class="v">{headroom:.0f}%</span></div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="pill"><span class="k">온도</span><span class="v">{t_now:.0f}℃ (여유 {thermal_hd:.0f}℃)</span></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="text-align:center; margin-top:-20px; margin-bottom:10px;"><span class="badge {state_cls}">부하 {load_pct:.0f}%</span></div>', unsafe_allow_html=True)
+
+    # 2x2 그리드 KPI
+    st.markdown('<div class="kpis">', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi"><div class="h">속도</div><div class="v">{speed_ms:.2f} m/s ({speed_kn:.1f} kn)</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi"><div class="h">출력 여유</div><div class="v">{headroom:.0f}%</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi"><div class="h">온도</div><div class="v">{t_now:.0f}℃</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi"><div class="h">온도 여유</div><div class="v">{thermal_hd:.0f}℃</div></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -694,14 +524,14 @@ st.session_state["pv_cnt"]   += 1
 pv_avg_today = st.session_state["pv_sum_w"] / max(1, st.session_state["pv_cnt"])
 
 # 최적 효율(간단 휴리스틱): FC를 가능한 한 결손을 채우도록 올렸을 때의 eco 비중 기반
-fc_opt = min(FC_PR, max(0.0, motor_now - pv_now_w))                         # 결손을 FC가 최대한 메움
+fc_opt = min(FC_PR, max(0.0, motor_now - pv_now_w))                  # 결손을 FC가 최대한 메움
 eco_opt = float(np.clip((pv_now_w + fc_opt) / max(1e-6, motor_now) * 100.0, 0, 100))
 # 효율 지수(데모): 60 + 0.35×친환경비중 - 고부하 페널티
 load_pct = float(np.clip(motor_now/MOTOR_PR*100.0, 0, 200))
 eff_now  = float(np.clip(60 + 0.35*eco_share_now - max(0, load_pct-85)*0.4, 0, 100))
 eff_opt  = float(np.clip(60 + 0.35*eco_opt       - max(0, load_pct-85)*0.4, 0, 100))
 eff_gain = eff_opt - eff_now   # 최적 전략 대비 이득
-pv_total_today_wh = (df['pv_w'].mean() * (len(df) / 3600.0))  # 대략적인 오늘 PV 총량(Wh)
+pv_total_today_wh = (df['pv_w'].sum() * DT / 3600.0)   # 대략적인 오늘 PV 총량(Wh)
 eff_opt = 95.0
 eff_gain = 0.0
 
@@ -738,37 +568,25 @@ with colR:
     </div>
     """, unsafe_allow_html=True)
 
-   # --- 그래프를 완만하게 만들기 위한 데이터 스무딩(이동 평균) ---
-# window_size 값을 조절해 얼마나 부드럽게 만들지 결정할 수 있습니다.
-# 값을 키울수록 그래프는 더 완만해집니다. (예: 5, 10, 20)
-    window_size = 10 
-
-    # 'pv_w' 데이터에 대한 이동 평균 계산
+    window_size = 10
     df['pv_w_smooth'] = df['pv_w'].rolling(window=window_size, min_periods=1).mean()
 
-
-    # PV 스파크라인 (수정됨)
+    # PV 스파크라인
     fig_pv = go.Figure()
-
-    # 1. 이동 평균을 적용한 '부드러운' 라인 (더 두껍게 표시)
-    fig_pv.add_scatter(x=df["time"], y=df["pv_w_smooth"], mode="lines", name="발전 전력 (추세)", 
+    fig_pv.add_scatter(x=df["time"], y=df["pv_w_smooth"], mode="lines", name="발전 전력 (추세)",
                       line=dict(width=3, color="#f59e0b"))
-
-    # 2. 기존의 '뾰족한' 원본 데이터 라인 (더 얇고 투명하게 표시)
-    fig_pv.add_scatter(x=df["time"], y=df["pv_w"], mode="lines", name="발전 전력 (원본)", 
+    fig_pv.add_scatter(x=df["time"], y=df["pv_w"], mode="lines", name="발전 전력 (원본)",
                       line=dict(width=1, color="#f59e0b"), opacity=0.3, showlegend=False)
 
-
     fig_pv.update_layout(
-        height=170, 
+        height=170,
         margin=dict(l=50, r=20, t=10, b=40),
-        paper_bgcolor="white", 
+        paper_bgcolor="white",
         plot_bgcolor="white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        yaxis=dict(title="발전 전력(W)", gridcolor="#e5e7eb", range=[0, df['pv_w'].max() * 1.2]),
+        yaxis=dict(title="발전 전력(W)", gridcolor="#e5e7eb", range=[0, max(df['pv_w'].max() * 1.2, 5)]), # Y축 최소 범위 5W
     )
     st.plotly_chart(fig_pv, use_container_width=True, theme=None)
-
     st.markdown('</div>', unsafe_allow_html=True)
 
 with colL:
@@ -791,8 +609,8 @@ with colL:
     ))
     st.session_state["batt_hist"] = pd.concat([st.session_state["batt_hist"],
                                                pd.DataFrame([{"time": datetime.utcnow(),
-                                                              "w": batt_w,
-                                                              "soc": st.session_state["batt_soc"]}])],
+                                                               "w": batt_w,
+                                                               "soc": st.session_state["batt_soc"]}])],
                                               ignore_index=True).tail(180)
     bh = st.session_state["batt_hist"]
 
@@ -804,88 +622,16 @@ with colL:
 
     st.markdown(f"""
     <div class="kpis">
-      <div class="kpi"><div class="h">상태</div><div class="v">{status} <span class="badge-pill {badge_cls}">{batt_w:+.0f} W</span></div></div>
+      <div class="kpi"><div class="h">상태</div><div class="v">{status} <span class="badge-pill {badge_cls}">{batt_w:+.1f} W</span></div></div>
       <div class="kpi"><div class="h">SOC</div><div class="v">{soc_now:.1f} % <span class="badge-pill">{soc_delta_30s:+.2f}%/30s</span></div></div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ⭐️ 1. 이동 평균 계산 (이 줄을 추가하세요)
-    # window=5는 최근 5개 데이터의 평균을 사용하겠다는 의미입니다. 숫자를 키우면 더 부드러워집니다.
-    # min_periods=1은 데이터가 5개 미만일 때도 가능한 만큼만 평균을 내서 처음부터 그래프가 보이게 합니다.
     bh['w_smooth'] = bh['w'].rolling(window=5, min_periods=1).mean()
 
     # 충/방전 전력 스파크라인
     fig_b = go.Figure()
-    # ⭐️ 2. 그래프를 그릴 때 y축 데이터를 'w_smooth'로 변경
     fig_b.add_scatter(x=bh["time"], y=bh["w_smooth"], mode="lines", name="Batt W",
                       line=dict(width=2, color="#6366f1"))
     fig_b.add_hline(y=0, line_color="#e5e7eb")
-    fig_b.update_layout(height=170, margin=dict(l=40,r=20,t=10,b=40),
-                        yaxis=dict(title="W", gridcolor="#eef2f7"),
-                        paper_bgcolor="white", plot_bgcolor="white")
-    st.plotly_chart(fig_b, use_container_width=True, theme=None)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-with colC:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown(
-            f'<div class="card-header"><div class="card-title">🧐 RER / ZER 지표</div></div>',
-            unsafe_allow_html=True,
-        )
-
-    headroom = float(max(0.0, 100.0 - load_pct))
-    eco_pct  = float(eco_share_now)
-
-    x = ["RER(여유)","ZER(친환경)"]
-    val = [headroom, eco_pct]
-    rem = [100-headroom, 100-eco_pct]
-
-    fig_rz = go.Figure()
-    # 회색(잔여) 먼저 쌓기
-    fig_rz.add_bar(
-        x=x, y=rem, name="잔여(100%-지표)",
-        marker_color="#eef2f7", hoverinfo="skip",
-        marker_line=dict(width=1, color="#e5e7eb")
-    )
-    # 초록(지표) 위에 쌓기
-    fig_rz.add_bar(
-        x=x, y=val, name="지표",
-        marker_color=["#10b981","#22c55e"],
-        text=val,                         # 숫자 그대로 넘기고
-        texttemplate="%{text:.0f}%",
-        textposition="outside",
-        marker_line=dict(width=1, color="#0ea5a0"),
-        cliponaxis=False
-    )
-
-    fig_rz.update_layout(
-        barmode="stack",
-        height=200,
-        width=200,
-        margin=dict(l=40,r=20,t=60,b=40),
-        yaxis=dict(range=[0,100], title="%", gridcolor="#eef2f7"),
-        paper_bgcolor="white", plot_bgcolor="white",
-        showlegend=False,
-        uniformtext_minsize=14, uniformtext_mode="show"  
-    )
-    st.plotly_chart(fig_rz, use_container_width=True, theme=None)
-
-    # 👇 처음 보는 사람도 이해하도록 간단 설명(접기)
-    st.markdown("""
-<details>
-  <summary>ℹ️ RER · ZER가 뭔가요?</summary>
-  <ul style="margin:6px 0 0 18px">
-    <li><b>RER</b>(Reserve Energy Ratio) = <i>출력 여유율</i>. 현재 모터 부하가 정격 대비 얼마나 여유가 있는지(%)를 뜻합니다.</li>
-    <li><b>ZER</b>(Zero-emission Ratio) = <i>무배출 에너지 비중</i>. 태양광+연료전지 전력이 모터 요구 전력의 몇 %를 채우는지입니다.</li>
-    <li>그래프는 <b>전체(100%) 대비 지표 값</b>을 초록색으로, 나머지를 회색으로 표현합니다.</li>
-  </ul>
-</details>
-    """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    
-# ---------- 자동 새로고침 ----------
-if st.session_state.get("auto_on", True):
-  time.sleep(st.session_state.get("auto_sec", 2))
-  st.rerun()
+    fig_b.update_layout(height=170, margin=dict)
