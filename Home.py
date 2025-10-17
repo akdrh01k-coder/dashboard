@@ -286,10 +286,32 @@ def custom_sidebar():
     """, unsafe_allow_html=True)
 
     def page_link_if_exists(candidates, label):
-        for p in candidates:
-            if os.path.exists(p):
-                st.sidebar.page_link(p, label=label)
-                return
+          for path in candidates:
+              if os.path.exists(path):
+                  if path.endswith(".py"):
+                      st.sidebar.page_link(path, label=label)
+                  elif path.endswith(".html"):
+                      try:
+                          with open(path, "rb") as f:
+                              b64 = base64.b64encode(f.read()).decode()
+                          data_url = f"data:text/html;base64,{b64}"
+                          st.sidebar.markdown(
+                              f"""
+                              <a href="{data_url}" target="_blank"
+                                style="display:block;margin:4px 0;padding:10px 12px;
+                                        border-radius:8px;text-decoration:none;
+                                        color:#fff;background:rgba(255,255,255,0.08);
+                                        border:1px solid rgba(255,255,255,0.15);">
+                                {label}
+                              </a>
+                              """,
+                              unsafe_allow_html=True,
+                          )
+                      except Exception as e:
+                          st.sidebar.caption(f"{label} 로드 오류: {e}")
+                  return True
+          st.sidebar.caption(f"'{label}' 파일을 찾지 못했습니다.")
+          return False
 
     st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
@@ -314,6 +336,19 @@ def custom_sidebar():
         "pages/2_2. 에너지_모니터링.py",
         "pages/2_2.에너지_모니터링.py",
     ], "⚡ 에너지 모니터링")
+
+    # 🚢 autopilot
+    page_link_if_exists([
+        "pages/autopilot.py",
+        # "static/autopilot.html",
+    ], "🚢 autopilot")
+
+    # 🌿 waypoint_generator
+    page_link_if_exists([
+        "pages/waypoint_generator.py",
+        # "static/waypoint_generator.html",
+    ], "🌿 waypoint_generator")
+
 
     # ⚠️ 안전 경보
     page_link_if_exists([
@@ -347,7 +382,7 @@ st.markdown(f"""
 <div class="hero" style="padding:22px; border-radius:12px; margin-bottom:18px;">
   <div class="left">
     <div class="h-title">🚢 Eco-friendShip — 통합 관제 대시보드</div>
-    <div class="h-sub">ㅇㅇ호의 안전 운항을 위한 실시간 모니터링 · 예측 · 제어가 가능한 대시보드입니다.</div>
+    <div class="h-sub">H2호의 안전 운항을 위한 실시간 모니터링 · 예측 · 제어가 가능한 대시보드입니다.</div>
   </div>
 
   <!-- 오른쪽: 마지막 갱신 대신 팀 정보 노출 -->
