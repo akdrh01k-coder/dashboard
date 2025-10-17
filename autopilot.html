@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>AutoPilot 관제 모니터링</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #app { display: grid; grid-template-columns: 380px 1fr; height: 100%; }
+    #sidebar { padding: 14px; border-right: 1px solid #e5e5e5; box-sizing: border-box;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Apple SD Gothic Neo, "Malgun Gothic", sans-serif; }
+    #map { height: 100%; }
+    h1 { font-size: 18px; margin: 6px 0 12px; }
+    .row { margin: 8px 0; }
+    label { display:block; font-size:12px; color:#555; margin-bottom:6px; }
+    select, input[type="number"] { width:100%; padding:6px 8px; box-sizing: border-box; }
+    button { padding:8px 12px; margin-right:6px; border-radius:8px; border:1px solid #d0d0d0; background:#fff; cursor:pointer; }
+    button.primary { background:#0ea5e9; color:#fff; border-color:#0ea5e9; }
+    button.destructive { background:#ef4444; color:#fff; border-color:#ef4444; }
+    .help { font-size:12px; color:#777; line-height:1.5; }
+    .stat { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+    .sep { height:1px; background:#eee; margin:12px 0; }
+    .legend { font-size:11px; color:#666; }
+    .legend b { font-weight:700; }
+
+    /* Boat SVG icon */
+    .boat-wrap { width: 32px; height: 32px; transform-origin: 50% 75%;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+    .boat-wrap svg { width: 100%; height: 100%; display: block; }
+
+    /* 선착장 라벨 */
+    .leaflet-tooltip.pier-label {
+      background: rgba(0,0,0,.75);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    }
+
+    /* 웨이포인트 인덱스 라벨 */
+    .leaflet-tooltip.wp-label {
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 11px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.25);
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <h1>Autopilot 자율운항</h1>
+    <div class="help">
+      선착장을 고른 뒤 <b>[항로 적용]</b> → <b>[시작]</b><br>
+      계획항로는 <b>출발지→센터라인→목적지</b> 전 구간이 표기됩니다.<br>
+      라벨은 마커 위에, 웨이포인트는 옵션으로 표시/비표시할 수 있어요.
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row">
+      <label>출발 선착장</label>
+      <select id="startPier"></select>
+    </div>
+    <div class="row">
+      <label>도착 선착장</label>
+      <select id="destPier"></select>
+    </div>
+    <div class="row">
+      <button id="btnApply">항로 적용</button>
+      <button id="swap">↔ 교체</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row">
+      <label>선박 속도 (m/s)</label>
+      <input id="speed" type="number" value="100.0" step="0.1" min="0.1" />
+    </div>
+    <div class="row">
+      <label>GPS 갱신주기 (ms)</label>
+      <input id="tick" type="number" value="500" step="100" min="100" />
+    </div>
+    <div class="row">
+      <label>GPS 노이즈 (m, 0=없음)</label>
+      <input id="noise" type="number" value="0.6" step="0.1" min="0" />
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row">
+      <label>라인-키핑 모드</label>
+      <select id="clampMode">
+        <option value="hard" selected>하드: 항상 경로에 완전 스냅</option>
+        <option value="soft">소프트: 보정 비율로 접근</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>소프트 보정 비율 (0~1, soft 전용)</label>
+      <input id="softGain" type="number" value="0.5" step="0.05" min="0" max="1" />
+    </div>
+    <div class="row">
+      <label>허용 횡오차 한계 (m, soft 전용)</label>
+      <input id="corridor" type="number" value="3" step="0.5" min="0" />
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row">
+      <input id="showWPs" type="checkbox" />
+      <label for="showWPs" style="display:inline;margin-left:6px">웨이포인트 표시</label>
+    </div>
+
+    <div class="sep"></div>
+    <div class="row">
+      <button id="btnStart" class="primary">시작</button>
+      <button id="btnPause">일시정지</button>
+      <button id="btnReset" class="destructive">리셋</button>
+    </div>
+
+    <div class="sep"></div>
+    <div class="row"><div class="stat" id="status">대기 중</div></div>
+    <div class="row"><div class="stat" id="stats2">—</div></div>
+
+    <div class="legend">
+      <div>· <b style="color:#9ca3af">회색 점선</b>: 출발 리드인(출발지→센터라인)</div>
+      <div>· <b style="color:#60a5fa">하늘색 점선</b>: 메인 항로(센터라인 구간)</div>
+      <div>· <b style="color:#8b5cf6">보라 점선</b>: 도킹 레그(센터라인→목적지)</div>
+      <div>· <b style="color:#16a34a">녹색 실선</b>: 실제 주행 궤적</div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+</div>
+
+<script>
+  // ===== 공용 상태 =====
+  let simTimer = null;
+  let state = { cur:null, heading:0, totalDist:0, startedAt:null, wpIndex:0 };
+
+  // 실제 운항 경로(웨이포인트): [출발지, sProj, ...centerline..., dProj, 목적지]
+  let activePath = [];
+
+  // 웨이포인트 렌더용 레이어
+  const wpLayer = L.layerGroup();
+
+  // ===== Boat SVG =====
+  const BOAT_SVG = `
+  <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="boat">
+    <path d="M6 40 L58 40 L50 50 L14 50 Z" fill="#111"/>
+    <path d="M28 26 L44 26 L50 40 L22 40 Z" fill="#60a5fa"/>
+    <path d="M58 40 L62 36 L58 40" stroke="#60a5fa" stroke-width="2" fill="none"/>
+    <rect x="31" y="30" width="6" height="6" rx="1.5" fill="white" opacity="0.85"/>
+  </svg>`;
+
+  // ===== 선착장(근사) =====
+  const PIERS = [
+    { id: 'gwangnaru', name: '광나루',  lat: 37.5450, lng: 127.1190 },
+    { id: 'ttukseom',  name: '뚝섬',    lat: 37.5310, lng: 127.0675 },
+    { id: 'jamsil',    name: '잠실',    lat: 37.5173, lng: 127.0746 },
+    { id: 'jamwon',    name: '잠원',    lat: 37.5189, lng: 127.0146 },
+    { id: 'banpo',     name: '반포',    lat: 37.5123, lng: 127.0110 },
+    { id: 'ichon',     name: '이촌',    lat: 37.5207, lng: 126.9716 },
+    { id: 'yeouinaru', name: '여의나루',lat: 37.5271, lng: 126.9329 },
+    { id: 'seonyudo',  name: '선유도',  lat: 37.5428, lng: 126.9005 },
+    { id: 'mangwon',   name: '망원',    lat: 37.5561, lng: 126.9010 },
+    { id: 'nanji',     name: '난지',    lat: 37.5680, lng: 126.8770 }
+  ];
+
+  // ===== 한강 중심선(데모용 간략 라인) =====
+  const CENTERLINE = [
+    [37.5450,127.1220],[37.5415,127.1105],[37.5378,127.1010],[37.5345,127.0900],
+    [37.5325,127.0805],[37.5310,127.0705],[37.5305,127.0620],[37.5295,127.0530],
+    [37.5285,127.0445],[37.5265,127.0360],[37.5235,127.0285],[37.5210,127.0210],
+    [37.5195,127.0140],[37.5180,127.0080],[37.5165,127.0020],[37.5150,126.9960],
+    [37.5140,126.9900],[37.5150,126.9840],[37.5170,126.9785],[37.5195,126.9735],
+    [37.5215,126.9690],[37.5235,126.9640],[37.5260,126.9585],[37.5285,126.9535],
+    [37.5305,126.9490],[37.5325,126.9445],[37.5350,126.9395],[37.5380,126.9355],
+    [37.5405,126.9315],[37.5435,126.9275],[37.5465,126.9235],[37.5495,126.9195],
+    [37.5525,126.9155],[37.5555,126.9115],[37.5585,126.9075],[37.5615,126.9035],
+    [37.5640,126.8995],[37.5660,126.8945],[37.5675,126.8895],[37.5685,126.8845],
+    [37.5688,126.8805]
+  ].map(([lat,lng])=>({lat,lng}));
+
+  // ===== 지오메트리 유틸 =====
+  const R = 6371000;
+  const toRad = d => d*Math.PI/180;
+  function haversine(p1, p2){
+    const φ1=toRad(p1.lat), φ2=toRad(p2.lat);
+    const Δφ=toRad(p2.lat-p1.lat), Δλ=toRad(p2.lng-p1.lng);
+    const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+    return 2*R*Math.asin(Math.sqrt(a));
+  }
+  function bearing(p1,p2){
+    const φ1=toRad(p1.lat), φ2=toRad(p2.lat);
+    const λ1=toRad(p1.lng), λ2=toRad(p2.lng);
+    const y=Math.sin(λ2-λ1)*Math.cos(φ2);
+    const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(λ2-λ1);
+    return (Math.atan2(y,x)*180/Math.PI+360)%360;
+  }
+  function destinationPoint(p, brgDeg, dist){
+    const δ=dist/R, θ=brgDeg*Math.PI/180, φ1=p.lat*Math.PI/180, λ1=p.lng*Math.PI/180;
+    const sinφ2=Math.sin(φ1)*Math.cos(δ)+Math.cos(φ1)*Math.sin(δ)*Math.cos(θ);
+    const φ2=Math.asin(sinφ2);
+    const y=Math.sin(θ)*Math.sin(δ)*Math.cos(φ1);
+    const x=Math.cos(δ)-Math.sin(φ1)*sinφ2;
+    const λ2=λ1+Math.atan2(y,x);
+    return {lat:φ2*180/Math.PI, lng:((λ2*180/Math.PI)+540)%360-180};
+  }
+  function projectPointOnSegment(A, B, P){
+    const mPerDegLat = 111320;
+    const mPerDegLng = 111320*Math.cos(((A.lat+B.lat)/2)*Math.PI/180);
+    const ax= (B.lng-A.lng)*mPerDegLng, ay= (B.lat-A.lat)*mPerDegLat;
+    const px= (P.lng-A.lng)*mPerDegLng, py= (P.lat-A.lat)*mPerDegLat;
+    const segLen2 = ax*ax+ay*ay || 1e-9;
+    let t = (px*ax+py*ay)/segLen2; t = Math.max(0, Math.min(1, t));
+    return { lat: A.lat + (B.lat-A.lat)*t, lng: A.lng + (B.lng-A.lng)*t, t };
+  }
+  function pointLineDistance(P, A, B){
+    const Q = projectPointOnSegment(A,B,P);
+    return haversine(P, Q);
+  }
+
+  // ===== 지도 & 레이어 =====
+  const map = L.map('map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20, attribution:'&copy; OpenStreetMap'}).addTo(map);
+  map.setView([37.53, 126.99], 12);
+  wpLayer.addTo(map); // 웨이포인트 레이어
+
+  // 계획항로 3개 레그
+  const legStartLine = L.polyline([], { color:'#9ca3af', weight:3, dashArray:'4 4' }).addTo(map);
+  const legMainLine  = L.polyline([], { color:'#60a5fa', weight:3, dashArray:'6 6' }).addTo(map);
+  const legDockLine  = L.polyline([], { color:'#8b5cf6', weight:3, dashArray:'4 4' }).addTo(map);
+  let trackLine      = L.polyline([], { color:'#16a34a', weight:3 }).addTo(map);
+
+  let startMarker=null, destMarker=null, boatMarker=null;
+
+  function makeBoat(latlng, headingDeg = 0) {
+    const html = `<div class="boat-wrap" style="transform: rotate(${headingDeg}deg)">${BOAT_SVG}</div>`;
+    const icon = L.divIcon({ className: '', html, iconSize: [32, 32], iconAnchor: [16, 24] });
+    if (!boatMarker) boatMarker = L.marker(latlng, { icon }).addTo(map);
+    boatMarker.setIcon(icon);
+    boatMarker.setLatLng(latlng);
+  }
+
+  // ===== 드롭다운 =====
+  const $startPier=document.getElementById('startPier');
+  const $destPier=document.getElementById('destPier');
+  function fillSelects(){
+    for (const p of PIERS){
+      const o1=document.createElement('option'); o1.value=p.id; o1.textContent=p.name;
+      const o2=o1.cloneNode(true);
+      $startPier.appendChild(o1); $destPier.appendChild(o2);
+    }
+  }
+  fillSelects();
+  $startPier.value='yeouinaru'; $destPier.value='jamsil';
+  const getPier = id => PIERS.find(p=>p.id===id);
+
+  // ===== 스냅 항로 생성 =====
+  function closestProjectedPoint(P){
+    let bestQ=null, bestD=Infinity, bestSeg=0, bestT=0;
+    for (let i=0;i<CENTERLINE.length-1;i++){
+      const A=CENTERLINE[i], B=CENTERLINE[i+1];
+      const Q=projectPointOnSegment(A,B,P);
+      const d=haversine(P,Q);
+      if (d<bestD){ bestD=d; bestQ=Q; bestSeg=i; bestT=Q.t; }
+    }
+    return { lat:bestQ.lat, lng:bestQ.lng, seg:bestSeg, t:bestT };
+  }
+
+  let snapped = { path: [], sProj:null, dProj:null, forward:true };
+
+  function buildSnappedRoute(startLL, destLL){
+    const sProj = closestProjectedPoint(startLL);
+    const dProj = closestProjectedPoint(destLL);
+    const forward = dProj.seg > sProj.seg || (dProj.seg===sProj.seg && dProj.t >= sProj.t);
+
+    const path = [];
+    path.push({lat:sProj.lat, lng:sProj.lng});
+    if (forward){
+      for (let i=sProj.seg+1; i<=dProj.seg; i++) path.push(CENTERLINE[i]);
+    } else {
+      for (let i=sProj.seg; i>=dProj.seg+1; i--) path.push(CENTERLINE[i]);
+    }
+    path.push({lat:dProj.lat, lng:dProj.lng});
+    return { path, sProj, dProj, forward };
+  }
+
+  // ===== 라벨 붙인 마커 =====
+  function setStartLL(latlng, labelText){
+    if (startMarker) startMarker.remove();
+    startMarker = L.marker(latlng, {draggable:true}).addTo(map);
+    startMarker.bindTooltip(
+      labelText ? `출발지: ${labelText}` : '출발지',
+      { permanent:true, direction:'top', offset:[0,-8], className:'pier-label' }
+    );
+    startMarker.on('dragend', ()=>{
+      if (startMarker.getTooltip()) startMarker.getTooltip().setContent('출발지(수정)');
+      applyRouteFromMarkers();
+    });
+  }
+  function setDestLL(latlng, labelText){
+    if (destMarker) destMarker.remove();
+    destMarker = L.marker(latlng, {draggable:true}).addTo(map);
+    destMarker.bindTooltip(
+      labelText ? `목적지: ${labelText}` : '목적지',
+      { permanent:true, direction:'top', offset:[0,-8], className:'pier-label' }
+    );
+    destMarker.on('dragend', ()=>{
+      if (destMarker.getTooltip()) destMarker.getTooltip().setContent('목적지(수정)');
+      applyRouteFromMarkers();
+    });
+  }
+
+  function refreshPlannedLines(startLL, destLL){
+    const s = startLL, d = destLL;
+    const sProj = snapped.sProj, dProj = snapped.dProj;
+    legStartLine.setLatLngs([s, {lat:sProj.lat, lng:sProj.lng}]);
+    legMainLine.setLatLngs(snapped.path);
+    legDockLine.setLatLngs([{lat:dProj.lat, lng:dProj.lng}, d]);
+  }
+
+  // ===== 웨이포인트 토글 렌더러 =====
+  const $showWPs = document.getElementById('showWPs');
+
+  function renderWaypoints(){
+    wpLayer.clearLayers();
+    if (!$showWPs.checked || activePath.length === 0) return;
+
+    // 구간별 색상
+    const colorLead = '#9ca3af'; // 출발→sProj
+    const colorMain = '#60a5fa'; // 센터라인
+    const colorDock = '#8b5cf6'; // dProj→목적지
+
+    // 인덱스: 0=출발지, 1=sProj, ..., len-2=dProj, len-1=목적지
+    const n = activePath.length;
+    for (let i=0;i<n;i++){
+      const wp = activePath[i];
+      let color = colorMain;
+      if (i <= 1) color = colorLead;
+      else if (i >= n-2) color = colorDock;
+
+      const cm = L.circleMarker([wp.lat, wp.lng], {
+        radius: 4, color, weight: 2, fillColor: color, fillOpacity: 0.25
+      }).addTo(wpLayer);
+
+      // 인덱스 라벨
+      const label = (i===0) ? 'S' : (i===n-1 ? 'D' : String(i));
+      cm.bindTooltip(label, { permanent:true, direction:'top', offset:[0,-10], className:'wp-label' });
+    }
+  }
+
+  function applyRouteFromMarkers(){
+    legStartLine.setLatLngs([]); legMainLine.setLatLngs([]); legDockLine.setLatLngs([]);
+    trackLine.setLatLngs([]);
+    wpLayer.clearLayers();
+
+    if (!(startMarker && destMarker)) return;
+    const s = startMarker.getLatLng(), d = destMarker.getLatLng();
+    if (haversine(s, d) < 1){ alert('출발지와 목적지가 같습니다. 다른 선착장을 선택하세요.'); return; }
+
+    // 1) 스냅 경로
+    snapped = buildSnappedRoute(s, d);
+
+    // 2) 실제 운항 웨이포인트(출발지~목적지)
+    activePath = [
+      {lat:s.lat, lng:s.lng},
+      {lat:snapped.sProj.lat, lng:snapped.sProj.lng},
+      ...snapped.path.slice(1, -1),
+      {lat:snapped.dProj.lat, lng:snapped.dProj.lng},
+      {lat:d.lat, lng:d.lng}
+    ];
+
+    // 3) 계획항로 표기 + 웨이포인트 렌더
+    refreshPlannedLines(s, d);
+    renderWaypoints();
+
+    // 4) 화면 맞춤 & 상태 초기화
+    map.fitBounds(L.latLngBounds(activePath).pad(0.25));
+    state.cur=null; state.wpIndex=0; state.totalDist=0;
+  }
+
+  function applyPiers(){
+    const s=getPier($startPier.value), d=getPier($destPier.value);
+    setStartLL({lat:s.lat, lng:s.lng}, s?.name);
+    setDestLL({lat:d.lat, lng:d.lng}, d?.name);
+    applyRouteFromMarkers();
+  }
+  document.getElementById('btnApply').onclick = applyPiers;
+  document.getElementById('swap').onclick = ()=>{
+    const a=$startPier.value, b=$destPier.value; $startPier.value=b; $destPier.value=a; applyPiers();
+  };
+  $showWPs.addEventListener('change', renderWaypoints);
+  applyPiers(); // 초기 적용
+
+  // ===== 라인-키핑 (센터라인 구간만) =====
+  function clampToRoute(current, path, idx, mode, corridor, gain){
+    let A, B;
+    if (idx <= 0) { A = path[0]; B = path[1] || path[0]; }
+    else          { A = path[idx-1]; B = path[idx]; }
+    const proj = projectPointOnSegment(A, B, current);
+    const Q = { lat: proj.lat, lng: proj.lng };
+    const cross = haversine(current, Q);
+    if (mode === 'hard') return { next: Q, cross };
+    if (cross <= corridor) return { next: current, cross };
+    const nx = current.lat + (Q.lat - current.lat) * gain;
+    const ny = current.lng + (Q.lng - current.lng) * gain;
+    return { next: { lat: nx, lng: ny }, cross };
+  }
+
+  // ===== 시뮬레이터 =====
+  const $speed=document.getElementById('speed');
+  const $tick =document.getElementById('tick');
+  const $noise=document.getElementById('noise');
+  const $status=document.getElementById('status');
+  const $stats2=document.getElementById('stats2');
+  const $clampMode=document.getElementById('clampMode');
+  const $softGain=document.getElementById('softGain');
+  const $corridor=document.getElementById('corridor');
+
+  const fmt=(n,d=1)=>Number(n).toFixed(d);
+  function fmtTime(sec){
+    if (!isFinite(sec) || sec<0) return '—';
+    const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=Math.floor(sec%60);
+    if (h>0) return `${h}h ${m}m ${s}s`;
+    if (m>0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+  function remainingRouteLength(cur, path, idx){
+    if (!path.length) return 0;
+    let rem = haversine(cur, path[idx]);
+    for (let i=idx;i<path.length-1;i++) rem += haversine(path[i], path[i+1]);
+    return rem;
+  }
+  function addNoiseMeters(p, meters){
+    if (meters<=0) return p;
+    const brg=Math.random()*360, dist=meters*Math.random();
+    return destinationPoint(p, brg, dist);
+  }
+
+  function startSim(){
+    if (!activePath.length){ alert('항로가 없습니다. 선착장을 적용하세요.'); return; }
+    if (simTimer) return;
+    const tickMs = Number($tick.value);
+
+    if (!state.cur){
+      state.cur = activePath[0]; // 출발지
+      trackLine.setLatLngs([state.cur]);
+      state.totalDist = 0;
+      state.startedAt = Date.now();
+      state.wpIndex = 1; // 첫 목표: sProj
+    }
+
+    simTimer = setInterval(()=>{
+      const speed = Number($speed.value);
+      const dt = tickMs/1000, step = speed*dt;
+      const path = activePath;
+      let idx = state.wpIndex;
+
+      // 도착 판정
+      const goal = path[path.length-1];
+      const distToGoal = haversine(state.cur, goal);
+      if (distToGoal <= 5){
+        stopSim();
+        trackLine.addLatLng(goal);
+        makeBoat(goal, state.heading);
+        $status.textContent = '도착: 목적지(부두) 5 m 이내';
+        return;
+      }
+
+      // 웨이포인트 갱신
+      const target = path[idx];
+      const distToWP = haversine(state.cur, target);
+      if (distToWP <= 10 && idx < path.length-1){
+        state.wpIndex = ++idx;
+      }
+
+      const aim = path[state.wpIndex];
+      const brg = bearing(state.cur, aim);
+      state.heading = brg;
+
+      // 기준 이동 + 노이즈
+      let tentative = destinationPoint(state.cur, brg, Math.min(step, haversine(state.cur, aim)));
+      tentative = addNoiseMeters(tentative, Number($noise.value));
+
+      // 클램프: 리드인/도킹 제외, 센터라인 내부에서만
+      const isLeadIn = state.wpIndex <= 1;
+      const isDockLeg = state.wpIndex >= path.length - 2;
+      let next = tentative, crossTrack = 0;
+      if (!isLeadIn && !isDockLeg){
+        const mode = $clampMode.value;
+        const gain = Math.max(0, Math.min(1, Number($softGain.value)));
+        const corridor = Math.max(0, Number($corridor.value));
+        const clamped = clampToRoute(tentative, path, state.wpIndex, mode, corridor, gain);
+        next = clamped.next;
+        crossTrack = clamped.cross;
+      }
+
+      // 누적/표시
+      state.totalDist += haversine(state.cur, next);
+      state.cur = next;
+      trackLine.addLatLng(next);
+      makeBoat(next, brg);
+
+      const remain = remainingRouteLength(next, path, state.wpIndex);
+      const eta = speed>0 ? remain/speed : Infinity;
+
+      $status.innerHTML = `주행중 · 방위 ${fmt(brg,0)}° · 남은거리 ${fmt(remain,1)} m · ETA ${fmtTime(eta)}`;
+      $stats2.innerHTML =
+        `현재: ${fmt(next.lat,6)}, ${fmt(next.lng,6)} · 누적 ${fmt(state.totalDist,1)} m<br>`+
+        `웨이포인트 ${state.wpIndex+1}/${path.length} · 횡오차 ${fmt(crossTrack,1)} m`;
+    }, tickMs);
+
+    $status.textContent = '시작';
+  }
+
+  function stopSim(){
+    if (simTimer){ clearInterval(simTimer); simTimer=null; $status.textContent='일시정지'; }
+  }
+  function resetSim(){
+    stopSim();
+    if (startMarker){ startMarker.remove(); startMarker=null; }
+    if (destMarker){ destMarker.remove(); destMarker=null; }
+    if (boatMarker){ boatMarker.remove(); boatMarker=null; }
+    legStartLine.setLatLngs([]); legMainLine.setLatLngs([]); legDockLine.setLatLngs([]);
+    trackLine.setLatLngs([]);
+    wpLayer.clearLayers();
+    state = { cur:null, heading:0, totalDist:0, startedAt:null, wpIndex:0 };
+    $startPier.value='yeouinaru'; $destPier.value='jamsil';
+    applyPiers();
+    $status.textContent='대기 중'; $stats2.textContent='—';
+  }
+
+  document.getElementById('btnStart').onclick = startSim;
+  document.getElementById('btnPause').onclick = stopSim;
+  document.getElementById('btnReset').onclick = resetSim;
+</script>
+</body>
+</html>

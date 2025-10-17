@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>웨이포인트 생성기 (Leaflet)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <style>
+    :root { --bg:#0b1220; --card:#101a31; --muted:#c5cee5; --accent:#5cc8ff; --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444;}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:white;font-family:"Pretendard",system-ui,Segoe UI,Arial;display:flex;height:100vh;gap:12px;padding:12px}
+    .panel{width:360px;background:var(--card);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 24px rgba(0,0,0,.25)}
+    h1{font-size:20px;margin:0 0 4px 0}
+    .sub{color:var(--muted);font-size:12px}
+    .row{display:flex;gap:8px;align-items:center}
+    .row > *{flex:1}
+    input,button,select,textarea{background:#0e1730;color:white;border:1px solid #1e2b52;border-radius:10px;padding:10px;font-size:14px;outline:none}
+    button:hover{border-color:#2c3f76}
+    .btn-primary{background:linear-gradient(135deg,#2563eb,#06b6d4);border:none;cursor:pointer}
+    .btn-ok{background:linear-gradient(135deg,#16a34a,#22c55e);border:none;cursor:pointer}
+    .btn-warn{background:linear-gradient(135deg,#f59e0b,#f97316);border:none;cursor:pointer}
+    .btn-danger{background:linear-gradient(135deg,#ef4444,#f43f5e);border:none;cursor:pointer}
+    #map{flex:1;border-radius:16px;overflow:hidden}
+    .list{flex:1;overflow:auto;border:1px dashed #243357;border-radius:12px;padding:8px}
+    .item{display:grid;grid-template-columns:28px 1fr 72px 28px 28px;gap:8px;align-items:center;background:#0c1530;border:1px solid #1e2b52;border-radius:10px;padding:8px;margin-bottom:8px}
+    .badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:#0e1936;border:1px solid #2a3f6f;font-weight:600}
+    .muted{color:var(--muted);font-size:12px}
+    .foot{display:flex;gap:8px}
+    .link{color:var(--accent);text-decoration:none}
+    .small{font-size:12px}
+    .ghost{background:#0c1530}
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div>
+      <h1>웨이포인트 생성기</h1>
+      <div class="sub">지도를 클릭해 웨이포인트를 추가하고, CSV로 내보내세요. (열: <b>lat,lon,speed</b>)</div>
+    </div>
+
+    <div class="row">
+      <label class="small muted" for="defaultSpeed">기본 속도(0.0~1.0)</label>
+      <input id="defaultSpeed" type="number" step="0.01" min="0" max="1" value="0.5">
+    </div>
+
+    <div class="row">
+      <button id="btnExport" class="btn-ok">CSV 내보내기</button>
+      <button id="btnCopy" class="btn-primary">CSV 복사</button>
+    </div>
+    <div class="row">
+      <button id="btnUndo" class="btn-warn">마지막 삭제</button>
+      <button id="btnClear" class="btn-danger">전체 삭제</button>
+    </div>
+
+    <div class="list" id="wpList"></div>
+
+    <div class="muted small">
+      • 순서는 클릭한 순서입니다. 화살표로 순서를 변경하세요.<br/>
+      • 각 지점의 속도를 직접 수정할 수 있습니다.<br/>
+      • 생성된 CSV는 <code>waypoints.csv</code>로 저장해 사용하세요.
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    // ---- Map init (center on Seoul) ----
+    const map = L.map('map', { zoomControl: true, minZoom: 2 }).setView([37.5665, 126.9780], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // ---- State ----
+    let waypoints = []; // {lat, lon, speed, marker}
+    const wpList = document.getElementById('wpList');
+    const defaultSpeedEl = document.getElementById('defaultSpeed');
+
+    // ---- Helpers ----
+    function renderList(){
+      wpList.innerHTML = '';
+      waypoints.forEach((wp, idx)=>{
+        const el = document.createElement('div');
+        el.className = 'item';
+        el.innerHTML = `
+          <div class="badge">${idx+1}</div>
+          <div>
+            <div class="small">lat: <b>${wp.lat.toFixed(6)}</b> / lon: <b>${wp.lon.toFixed(6)}</b></div>
+            <div class="muted small">드래그&드롭 대신 화살표로 순서를 바꾸세요.</div>
+          </div>
+          <input type="number" step="0.01" min="0" max="1" value="${wp.speed.toFixed(2)}" title="speed"/>
+          <button class="ghost" title="위로">↑</button>
+          <button class="ghost" title="삭제">✕</button>
+        `;
+        const speedInput = el.children[2];
+        const btnUp = el.children[3];
+        const btnDel = el.children[4];
+
+        speedInput.addEventListener('change', (e)=>{
+          const v = parseFloat(e.target.value || '0.5');
+          wp.speed = Math.max(0, Math.min(1, isNaN(v)?0.5:v));
+          speedInput.value = wp.speed.toFixed(2);
+        });
+        btnUp.addEventListener('click', ()=>{
+          if(idx>0){
+            [waypoints[idx-1], waypoints[idx]] = [waypoints[idx], waypoints[idx-1]];
+            redrawMarkers();
+            renderList();
+          }
+        });
+        btnDel.addEventListener('click', ()=>{
+          map.removeLayer(wp.marker);
+          waypoints.splice(idx,1);
+          redrawMarkers();
+          renderList();
+        });
+        wpList.appendChild(el);
+      });
+    }
+
+    function redrawMarkers(){
+      waypoints.forEach((wp, i)=>{
+        const label = `${i+1}`;
+        wp.marker.bindTooltip(label, {permanent:true, direction:'top', className:'wpLabel'}).openTooltip();
+      });
+      // update polyline
+      updatePolyline();
+    }
+
+    let line = null;
+    function updatePolyline(){
+      if(line) { map.removeLayer(line); line = null; }
+      if(waypoints.length>=2){
+        const latlngs = waypoints.map(wp=>[wp.lat, wp.lon]);
+        line = L.polyline(latlngs, {weight:4}).addTo(map);
+      }
+    }
+
+    function addWaypoint(lat, lon){
+      const speed = Math.max(0, Math.min(1, parseFloat(defaultSpeedEl.value || '0.5')));
+      const marker = L.circleMarker([lat,lon], {radius:8});
+      marker.addTo(map);
+      const wp = {lat, lon, speed, marker};
+      waypoints.push(wp);
+      redrawMarkers();
+      renderList();
+    }
+
+    // ---- Map click to add ----
+    map.on('click', (e)=>{
+      addWaypoint(e.latlng.lat, e.latlng.lng);
+    });
+
+    // ---- Buttons ----
+    document.getElementById('btnUndo').addEventListener('click', ()=>{
+      const wp = waypoints.pop();
+      if(wp){ map.removeLayer(wp.marker); redrawMarkers(); renderList(); }
+    });
+    document.getElementById('btnClear').addEventListener('click', ()=>{
+      waypoints.forEach(wp=> map.removeLayer(wp.marker));
+      waypoints = [];
+      redrawMarkers();
+      renderList();
+    });
+
+    function toCSV(){
+      let rows = ['lat,lon,speed'];
+      waypoints.forEach(wp=> rows.push(`${wp.lat.toFixed(6)},${wp.lon.toFixed(6)},${wp.speed.toFixed(2)}`));
+      return rows.join('\\n');
+    }
+
+    function download(filename, text){
+      const blob = new Blob([text], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      a.remove();
+    }
+
+    document.getElementById('btnExport').addEventListener('click', ()=>{
+      const csv = toCSV();
+      download('waypoints.csv', csv);
+    });
+
+    document.getElementById('btnCopy').addEventListener('click', async ()=>{
+      const csv = toCSV();
+      try {
+        await navigator.clipboard.writeText(csv);
+        alert('CSV가 클립보드에 복사되었습니다.');
+      } catch (e){
+        alert('복사 실패. 수동으로 복사해주세요.');
+      }
+    });
+
+    // ---- Try geolocation to center ----
+    if (navigator.geolocation){
+      navigator.geolocation.getCurrentPosition((pos)=>{
+        map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+      });
+    }
+  </script>
+</body>
+</html>
