@@ -165,6 +165,18 @@ def custom_sidebar():
         "pages/1_1. 메인_컨트롤.py",
         "pages/1_1.메인_컨트롤.py",
     ], "🧭 메인 컨트롤")
+    
+    # 🚢 autopilot
+    page_link_if_exists([
+        "pages/autopilot.py",
+        # "static/autopilot.html",
+    ], "🚢 autopilot")
+
+    # 🌿 waypoint_generator
+    page_link_if_exists([
+        "pages/waypoint_generator.py",
+        # "static/waypoint_generator.html",
+    ], "🌿 waypoint_generator")
 
     # 🛰️ 위치 모니터링 LiDAR
     page_link_if_exists([
@@ -203,7 +215,6 @@ def custom_sidebar():
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 custom_sidebar()
-
 # =========================
 #  상단 헤더바 + 제목 (메인과 통일)
 # =========================
