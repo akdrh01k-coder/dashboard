@@ -29,21 +29,83 @@ section[data-testid="stSidebar"] *, div[data-testid="stSidebar"] * { color:#fff 
 # ---------- 커스텀 사이드바(에너지 페이지와 동일한 링크 구성) ----------
 def custom_sidebar():
     import os
-    st.sidebar.markdown('<div class="sb-title" style="font-weight:800;font-size:20px;margin:6px 0 8px 0;">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+      [data-testid="stSidebarNav"] { display: none !important; }
+      section[data-testid="stSidebar"] {
+        background: #3E4A61 !important; color: #fff !important;
+      }
+      section[data-testid="stSidebar"] * { color:#fff !important; }
+      .sb-title { font-weight: 800; font-size: 20px; margin: 6px 0 8px 0; }
+      .sb-link [data-testid="stPageLink"] a{ color:#fff !important; text-decoration:none !important; }
+      .sb-link [data-testid="stPageLink"] a:hover{ background: rgba(255,255,255,0.12); border-radius: 6px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    def page_link_if_exists(candidates, label):
+        for p in candidates:
+            if os.path.exists(p):
+                st.sidebar.page_link(p, label=label)
+                return
+
+    st.sidebar.markdown('<div class="sb-title">Eco-Friendship Dashboard</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sb-link">', unsafe_allow_html=True)
 
-    def page_link_if_exists(cands, label):
-        for p in cands:
-            if os.path.exists(p):
-                st.sidebar.page_link(p, label=label); return
-
+    # 🏠 엔트리포인트(홈)
     page_link_if_exists(["Home.py"], "🏠 홈")
-    page_link_if_exists(["pages/1_1. 메인_컨트롤.py","pages/1_1.메인_컨트롤.py"], "🧭 메인 컨트롤")
-    page_link_if_exists(["pages/1_2. 위치_모니터링_LiDAR.py","pages/1_2.위치_모니터링_LiDAR.py"], "📡 위치 모니터링 LiDAR")
-    page_link_if_exists(["pages/2_2. 에너지_모니터링.py","pages/2_2.해너지_모니터링.py","pages/2_2.에너지_모니터링.py"], "⚡ 에너지 모니터링")
-    page_link_if_exists(["pages/3_3. 안전 경보.py","pages/3_3.안전 경보.py","pages/3_3. 안전_경보.py","pages/3_3.안전_경보.py"], "⚠️ 안전 경보")
-    page_link_if_exists(["pages/4_4. 친환경 지표.py","pages/4_4.친환경 지표.py","pages/4_4. 친환경_지표.py","pages/4_4.친환경_지표.py"], "🌱 친환경 지표")
-    page_link_if_exists(["pages/5_5. 로그인.py","pages/5_5.로그인.py"], "🔐 로그인")
+
+    # 🧭 메인 컨트롤
+    page_link_if_exists([
+        "pages/1_1. 메인_컨트롤.py",
+        "pages/1_1.메인_컨트롤.py",
+    ], "🧭 메인 컨트롤")
+    
+    # 🚢 autopilot
+    page_link_if_exists([
+        "pages/autopilot.py",
+        # "static/autopilot.html",
+    ], "🚢 autopilot")
+
+    # 🌿 waypoint_generator
+    page_link_if_exists([
+        "pages/waypoint_generator.py",
+        # "static/waypoint_generator.html",
+    ], "🌿 waypoint_generator")
+
+    # 🛰️ 위치 모니터링 LiDAR
+    page_link_if_exists([
+        "pages/1_2. 위치_모니터링_LiDAR.py",
+        "pages/1_2.위치_모니터링_LiDAR.py",
+    ], "🛰️ 위치 모니터링 LiDAR")
+    
+    # ⚡ 에너지 모니터링
+    page_link_if_exists([
+        "pages/2_2. 에너지_모니터링.py",
+        "pages/2_2.에너지_모니터링.py",
+    ], "⚡ 에너지 모니터링")
+
+    # ⚠️ 안전 경보
+    page_link_if_exists([
+        "pages/3_3. 안전 경보.py",
+        "pages/3_3.안전 경보.py",
+        "pages/3_3. 안전_경보.py",
+        "pages/3_3.안전_경보.py",
+    ], "⚠️ 안전 경보")
+
+    # 🌱 친환경 지표 (띄어쓰기/언더스코어 모두 대응)
+    page_link_if_exists([
+        "pages/4_4. 친환경 지표.py",
+        "pages/4_4.친환경 지표.py",
+        "pages/4_4. 친환경_지표.py",
+        "pages/4_4.친환경_지표.py",
+    ], "🌱 친환경 지표")
+
+    # 🔐 로그인 (공백/무공백 모두 대응)
+    page_link_if_exists([
+        "pages/5_5. 로그인.py",
+        "pages/5_5.로그인.py",
+    ], "🔐 로그인")
+
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 custom_sidebar()
