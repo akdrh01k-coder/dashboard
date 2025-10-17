@@ -296,8 +296,8 @@ mode = _get("mode", "수동조작 모드")
 hz = _get("hz", 10)
 timeout_s = _get("timeout_s", 1.0)
 send_zero_on_release = _get("send_zero_on_release", True)
-cam_mode = _get("cam_mode", "MJPEG 주소") # <<<--- 기본값을 MJPEG 주소로 변경
-cam_url = _get("cam_url", f"{CAM_API_BASE}/cam/mjpeg")  # 최초 기본은  기반
+cam_mode = _get("cam_mode", "MJPEG 주소")
+cam_url = _get("cam_url", f"{CAM_API_BASE}/cam/mjpeg")
 
 
 top_header()
@@ -457,7 +457,6 @@ def render_big_controller(offset_px: int, api_base: str, pwm_val: int, hz_val: i
 # ──────────────────────────────────────────────────────────────────────────────
 def render_live_cam():
     st.subheader("📷 Live Cam")
-    # <<<--- '데모(가상 영상)' 관련 if 블록 전체 삭제됨 ---<<<
 
     if cam_mode == "노트북 웹캠(브라우저)":
         html_local_cam = """
@@ -707,15 +706,20 @@ with st.container():
     with r1c1:
         st.text_input("제어 API 주소", st.session_state["api_input"], key="api_input")
     with r1c2:
-        # <<<--- selectbox에서 '데모(가상 영상)' 옵션 삭제 ---<<<
         st.selectbox("카메라 모드", ["노트북 웹캠(브라우저)", "MJPEG 주소"], key="cam_mode")
     with r1c3:
-        # 사용자가 직접 수정한 적 없으면 API_BASE 변화에 맞춰 기본값 갱신
+        # --- [최종 수정된 부분] ---
+        # 사용자가 카메라 URL을 직접 건드리지 않았다면,
+        # '제어 API 주소'가 바뀔 때마다 카메라 URL도 새 IP와 **8001번 포트**로 자동 업데이트됩니다.
         if "cam_url_user_touched" not in st.session_state:
-            st.session_state.cam_url = f'{st.session_state["api_input"]}/cam/mjpeg'
+            current_api_base = st.session_state["api_input"]
+            cam_api_base_dynamic = current_api_base.replace(":8000", ":8001")
+            st.session_state.cam_url = f'{cam_api_base_dynamic}/cam/mjpeg'
+        
         cam_changed = st.text_input("카메라 MJPEG URL", st.session_state["cam_url"], key="cam_url")
-        # 사용자가 직접 손댔는지 플래그
-        st.session_state.cam_url_user_touched = True
+        # 사용자가 직접 손댔는지 기록하는 플래그
+        if cam_changed:
+            st.session_state.cam_url_user_touched = True
 
     # ▶ Row 2: 운항 모드 / 전송주기 & 타임아웃 / 체크박스 (3열 동일폭 → 정렬 깔끔)
     r2c1, r2c2, r2c3 = st.columns([0.34, 0.32, 0.34])
