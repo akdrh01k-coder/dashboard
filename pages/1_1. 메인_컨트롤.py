@@ -183,7 +183,7 @@ st.markdown(f"""
 .badge {{
   padding: 4px 10px; border-radius: 999px; color: #fff;
   font-weight: 700; font-size: 12px;
-}}            
+}}              
 
 </style>
 """, unsafe_allow_html=True)
@@ -229,7 +229,6 @@ def top_header():
                 display:flex; justify-content:space-between; align-items:center;
                 border-radius:8px; font-family:system-ui, -apple-system, Segoe UI, Roboto;">
               <div style="font-size:18px; font-weight:700;">Eco-Friendship Dashboard</div>
-              <!-- 우측: 시계만 (여기서 헤더 끝) -->
               <div style="font-size:14px;">
                   <span id="clock"></span>
               </div>
@@ -291,13 +290,14 @@ def _get(name, default):
         st.session_state[name] = default
     return st.session_state[name]
 
-API_BASE = _get("api_input", "http://127.0.0.1:8000")
+API_BASE = _get("api_input", "http://172.20.10.3:8000")
+CAM_API_BASE = API_BASE.replace(":8000", ":8001")
 mode = _get("mode", "수동조작 모드")
 hz = _get("hz", 10)
 timeout_s = _get("timeout_s", 1.0)
 send_zero_on_release = _get("send_zero_on_release", True)
-cam_mode = _get("cam_mode", "데모(가상 영상)")
-cam_url = _get("cam_url", f"{API_BASE}/cam/mjpeg")  # 최초 기본은 API_BASE 기반
+cam_mode = _get("cam_mode", "MJPEG 주소") # <<<--- 기본값을 MJPEG 주소로 변경
+cam_url = _get("cam_url", f"{CAM_API_BASE}/cam/mjpeg")  # 최초 기본은  기반
 
 
 top_header()
@@ -457,48 +457,9 @@ def render_big_controller(offset_px: int, api_base: str, pwm_val: int, hz_val: i
 # ──────────────────────────────────────────────────────────────────────────────
 def render_live_cam():
     st.subheader("📷 Live Cam")
-    if cam_mode == "데모(가상 영상)":
-        html_demo = """
-        <style>
-        .camwrap { position:relative; width:100%; height:360px; border:1px solid #ddd; border-radius:12px; overflow:hidden; background:#111;}
-        .badge   { position:absolute; left:12px; top:12px; background:#fff3; color:#fff; padding:4px 10px; border-radius:999px; font-weight:700; letter-spacing:1px;}
-        canvas   { width:100%; height:100%; display:block; }
-        </style>
-        <div class="camwrap">
-          <div class="badge">DEMO</div>
-          <canvas id="c"></canvas>
-        </div>
-        <script>
-        const can = document.getElementById('c'); const ctx = can.getContext('2d');
-        function resize() { can.width = can.clientWidth; can.height = can.clientHeight; }
-        window.addEventListener('resize', resize); resize();
-        function draw(t) {
-          const w = can.width, h = can.height;
-          const g = ctx.createLinearGradient(0,0,0,h);
-          g.addColorStop(0,'#1b2735'); g.addColorStop(1,'#090a0f');
-          ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
-          const r = 40 + 10*Math.sin(t*0.002);
-          const cx = (w/2) + Math.sin(t*0.0015)*w*0.3;
-          const cy = h*0.35 + Math.sin(t*0.001)*10;
-          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
-          ctx.fillStyle = '#ffcc33'; ctx.fill();
-          ctx.beginPath();
-          for (let x=0; x<w; x++) {
-            const y = h*0.6 + Math.sin((x*0.02)+(t*0.006))*8 + Math.sin((x*0.04)-(t*0.004))*5;
-            if (x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-          }
-          ctx.strokeStyle = '#2ec4b6'; ctx.lineWidth = 2; ctx.stroke();
-          ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif';
-          const ts = new Date().toLocaleTimeString();
-          ctx.fillText('SIMULATED FEED — '+ts, 12, h-12);
-          requestAnimationFrame(draw);
-        }
-        requestAnimationFrame(draw);
-        </script>
-        """
-        components.html(html_demo, height=380)
-        st.caption("가상(데모) 화면입니다. Pi 연결 시 ‘MJPEG 주소’로 전환하세요.")
-    elif cam_mode == "노트북 웹캠(브라우저)":
+    # <<<--- '데모(가상 영상)' 관련 if 블록 전체 삭제됨 ---<<<
+
+    if cam_mode == "노트북 웹캠(브라우저)":
         html_local_cam = """
         <style>
         .camwrap { position:relative; width:100%; height:360px; border:1px solid #ddd; border-radius:12px; overflow:hidden; background:#000; }
@@ -529,7 +490,7 @@ def render_live_cam():
         """
         components.html(html_local_cam, height=420)
         st.caption("처음 실행 시 브라우저 카메라 권한을 허용하세요.")
-    else:
+    else: # MJPEG 주소 모드
         html_mjpeg = f"""
         <style>
         .camwrap {{ position:relative; width:100%; height:360px; border:1px solid #ddd; border-radius:12px; overflow:hidden; background:#000; }}
@@ -746,7 +707,8 @@ with st.container():
     with r1c1:
         st.text_input("제어 API 주소", st.session_state["api_input"], key="api_input")
     with r1c2:
-        st.selectbox("카메라 모드", ["데모(가상 영상)", "노트북 웹캠(브라우저)", "MJPEG 주소"], key="cam_mode")
+        # <<<--- selectbox에서 '데모(가상 영상)' 옵션 삭제 ---<<<
+        st.selectbox("카메라 모드", ["노트북 웹캠(브라우저)", "MJPEG 주소"], key="cam_mode")
     with r1c3:
         # 사용자가 직접 수정한 적 없으면 API_BASE 변화에 맞춰 기본값 갱신
         if "cam_url_user_touched" not in st.session_state:
