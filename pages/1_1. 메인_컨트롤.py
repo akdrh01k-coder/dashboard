@@ -290,8 +290,10 @@ def _get(name, default):
         st.session_state[name] = default
     return st.session_state[name]
 
+# --- [수정] API 주소 변수 설정 (CAM 포트: 8002) ---
 API_BASE = _get("api_input", "http://172.20.10.3:8000")
-CAM_API_BASE = API_BASE.replace(":8000", ":8001")
+CAM_API_BASE = API_BASE.replace(":8000", ":8002")
+
 mode = _get("mode", "수동조작 모드")
 hz = _get("hz", 10)
 timeout_s = _get("timeout_s", 1.0)
@@ -708,18 +710,16 @@ with st.container():
     with r1c2:
         st.selectbox("카메라 모드", ["노트북 웹캠(브라우저)", "MJPEG 주소"], key="cam_mode")
     with r1c3:
-        # --- [최종 수정된 부분] ---
-        # 사용자가 카메라 URL을 직접 건드리지 않았다면,
-        # '제어 API 주소'가 바뀔 때마다 카메라 URL도 새 IP와 **8001번 포트**로 자동 업데이트됩니다.
+        # --- [최종 수정] ---
+        # 제어 API 주소가 바뀔 때마다 카메라 URL도 새 IP와 **8002번 포트**로 자동 업데이트
         if "cam_url_user_touched" not in st.session_state:
             current_api_base = st.session_state["api_input"]
-            cam_api_base_dynamic = current_api_base.replace(":8000", ":8001")
+            cam_api_base_dynamic = current_api_base.replace(":8000", ":8002")
             st.session_state.cam_url = f'{cam_api_base_dynamic}/cam/mjpeg'
         
-        cam_changed = st.text_input("카메라 MJPEG URL", st.session_state["cam_url"], key="cam_url")
-        # 사용자가 직접 손댔는지 기록하는 플래그
-        if cam_changed:
-            st.session_state.cam_url_user_touched = True
+        st.text_input("카메라 MJPEG URL", st.session_state["cam_url"], key="cam_url")
+        # 사용자가 직접 손댔는지 기록하는 플래그 (단순화를 위해 항상 True로 설정)
+        st.session_state.cam_url_user_touched = True
 
     # ▶ Row 2: 운항 모드 / 전송주기 & 타임아웃 / 체크박스 (3열 동일폭 → 정렬 깔끔)
     r2c1, r2c2, r2c3 = st.columns([0.34, 0.32, 0.34])
